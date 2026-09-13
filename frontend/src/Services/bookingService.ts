@@ -6,6 +6,7 @@ import {
   notifyPaymentReceived,
 } from "./notificationStore";
 import { recordSuccessfulGig } from "./reputationStore";
+import { createReceipt } from "./receiptStore";
 
 export type CreateBookingPayload = {
   artistId: string;
@@ -85,10 +86,26 @@ export async function updateBookingPaymentApi(
   try {
     if (paymentStatus === "paid" || paymentStatus === "deposit") {
       recordSuccessfulGig(data.artistId);
+      const amount = data.fee || 0;
+      const depositAmt = paymentStatus === "deposit" ? Math.round(amount * 0.3) : amount;
+      createReceipt({
+        bookingId: data.id,
+        artistId: data.artistId,
+        artistName: data.artistName,
+        promoterName: data.promoterName || data.clientName,
+        promoterEmail: data.clientEmail,
+        amount: depositAmt,
+        platformFee: Math.round(depositAmt * 0.05),
+        artistPayout: Math.round(depositAmt * 0.95),
+        kind: paymentStatus === "deposit" ? "deposit" : "full",
+        method: "manual",
+        status: "paid",
+        paidAt: data.paidAt || new Date().toISOString(),
+      });
       notifyPaymentReceived({
         artistId: data.artistId,
         promoterId: data.promoterId || data.clientEmail,
-        amount: data.fee || 0,
+        amount: depositAmt,
         venue: data.venue || "your event",
         kind: paymentStatus === "deposit" ? "deposit" : "full",
       });

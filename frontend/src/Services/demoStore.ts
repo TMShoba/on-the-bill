@@ -1,6 +1,7 @@
 import { recordSuccessfulGig } from "./reputationStore";
 import { notifyPaymentReceived } from "./notificationStore";
 import type { Booking } from "../Types/Artist";
+import { createReceipt } from "./receiptStore";
 import {
   createBooking as apiCreateBooking,
   getBookings as apiGetBookings,
@@ -270,6 +271,22 @@ export function markBookingPaid(
   writeGigs(gigs);
   if (mode === "paid" || mode === "deposit") {
     try {
+      const amount = prev.fee || 0;
+      const payAmt = mode === "deposit" ? Math.round(amount * 0.3) : amount;
+      createReceipt({
+        bookingId: prev.id,
+        artistId: prev.artistId,
+        artistName: prev.artistName,
+        promoterName: prev.promoterName || prev.clientName,
+        promoterEmail: prev.clientEmail,
+        amount: payAmt,
+        platformFee: Math.round(payAmt * 0.05),
+        artistPayout: Math.round(payAmt * 0.95),
+        kind: mode === "deposit" ? "deposit" : "full",
+        method: "manual",
+        status: "paid",
+        paidAt: new Date().toISOString(),
+      });
       if (mode === "paid") recordSuccessfulGig(prev.artistId);
       const promoterId =
         prev.clientEmail === DEMO_PROMOTER.email
