@@ -6,7 +6,7 @@ export async function getArtists(params?: {
   genre?: string;
   location?: string;
 }) {
-  const { data } = await api.get<Artist[]>("/api/artists", {
+  const { data } = await api.get<Artist[]>("/artists", {
     params,
   });
 
@@ -14,7 +14,7 @@ export async function getArtists(params?: {
 }
 
 export async function getArtistById(id: string) {
-  const { data } = await api.get<Artist>(`/api/artists/${id}`);
+  const { data } = await api.get<Artist>(`/artists/${id}`);
 
   return data;
 }
