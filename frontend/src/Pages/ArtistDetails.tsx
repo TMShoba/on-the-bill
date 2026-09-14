@@ -10,7 +10,6 @@ import {
   DEMO_PROMOTER,
 } from "../Services/demoStore";
 import { mockMessagingApi } from "../Services/mockMessagingApi";
-import { createBooking } from "../Services/bookingService";
 import { resolveArtistImage } from "../utils/imageCdn";
 import PublicAvailabilityCalendar, {
   confirmedDatesFromGigs,
@@ -99,17 +98,22 @@ export default function ArtistDetails() {
     try {
       let bookingId: string = crypto.randomUUID();
 
-      if (user?.role === "promoter" || user?.email === DEMO_PROMOTER.email) {
-        const gig = await addPromoterBookingAsync({
-          ...payload,
-          artistId: DEMO_ARTIST.id,
-          artistName: artist.stageName,
-        });
-        bookingId = gig.id;
+      // Always book the public catalog artist id so the row exists on the server
+      const gig = await addPromoterBookingAsync({
+        ...payload,
+        artistId: artist.id,
+        artistName: artist.stageName,
+        clientName: user?.name || String(form.get("clientName") || DEMO_PROMOTER.name),
+        clientEmail:
+          user?.email ||
+          String(form.get("clientEmail") || DEMO_PROMOTER.email),
+      });
+      bookingId = gig.id;
 
+      try {
         await mockMessagingApi.ensureConversationForBooking({
           bookingId: gig.id,
-          artistId: DEMO_ARTIST.id,
+          artistId: artist.id,
           artistName: artist.stageName,
           promoterId: user?.id || DEMO_PROMOTER.id,
           promoterName: user?.name || DEMO_PROMOTER.name,
@@ -117,16 +121,8 @@ export default function ArtistDetails() {
             payload.message ||
             `Hi! I'd like to book you for ${payload.venue} on ${payload.eventDate}.`,
         });
-      } else {
-        const created = await createBooking({
-          artistId: artist.id,
-          clientName: user?.name || String(form.get("clientName") || ""),
-          clientEmail: user?.email || (form.get("clientEmail") as string),
-          eventDate: payload.eventDate,
-          venue: payload.venue,
-          message: payload.message,
-        });
-        bookingId = created.id;
+      } catch {
+        /* messaging optional */
       }
 
       if (paymentMethod === "card") {

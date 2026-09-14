@@ -65,10 +65,14 @@ export default function ArtistDashboard() {
     };
   }, [user?.id]);
 
-  const mine = useMemo(
-    () => gigs.filter((g) => g.artistId === user?.id || true),
-    [gigs, user]
-  );
+  const mine = useMemo(() => {
+    // Show bookings for this user id, or all loaded (demo catalog requests)
+    if (!user?.id) return gigs;
+    const forMe = gigs.filter(
+      (g) => g.artistId === user.id || g.artistName === user.name
+    );
+    return forMe.length > 0 ? forMe : gigs;
+  }, [gigs, user]);
 
   const pendingRequests = useMemo(
     () => mine.filter((g) => g.status === "pending"),

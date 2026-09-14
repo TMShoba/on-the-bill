@@ -326,19 +326,26 @@ export function openBookingDispute(
 }
 
 
-/** Prefer server bookings; fall back to local demo gigs if API is down */
+/** Prefer server bookings; merge with local so an empty API response never wipes the UI */
 export async function loadBookingsForUser(): Promise<Booking[]> {
+  const local = getDemoGigs();
   try {
     const remote = await apiGetBookings();
-    if (Array.isArray(remote)) {
-      // Merge: server is source of truth; keep local-only fields if needed
-      writeGigs(remote);
-      return remote;
-    }
+    if (!Array.isArray(remote)) return local;
+
+    // Merge by id — remote wins on conflict; keep local-only rows
+    const byId = new Map<string, Booking>();
+    for (const g of local) byId.set(g.id, g);
+    for (const g of remote) byId.set(g.id, g);
+    const merged = Array.from(byId.values()).sort((a, b) =>
+      (b.createdAt || "").localeCompare(a.createdAt || "")
+    );
+    writeGigs(merged);
+    return merged;
   } catch (e) {
     console.warn("Bookings API unavailable, using local demo store", e);
+    return local;
   }
-  return getDemoGigs();
 }
 
 /** Create booking on server (with local fallback) */

@@ -70,19 +70,40 @@ router.get("/", optionalAuth, (req, res) => {
         .all(req.user.id, req.user.email || "");
     }
   } else if (req.user?.ephemeral) {
-    // Demo users not in DB: filter by artist/promoter id heuristics
+    // Demo tokens (not in users table)
     if (req.user.role === "artist") {
+      // Match bookings for this demo user id OR any catalog booking (demo login)
       rows = db
         .prepare(
-          `SELECT * FROM bookings WHERE artist_id = ? ORDER BY created_at DESC`
+          `SELECT * FROM bookings
+           WHERE artist_id = ? OR artist_id = ?
+           ORDER BY created_at DESC
+           LIMIT 100`
         )
-        .all(req.user.id);
+        .all(req.user.id, req.user.artistId || req.user.id);
+      if (rows.length === 0) {
+        // Demo artist account: surface recent requests so catalog bookings appear
+        rows = db
+          .prepare(
+            `SELECT * FROM bookings ORDER BY created_at DESC LIMIT 50`
+          )
+          .all();
+      }
     } else {
       rows = db
         .prepare(
-          `SELECT * FROM bookings WHERE promoter_id = ? ORDER BY created_at DESC`
+          `SELECT * FROM bookings
+           WHERE promoter_id = ? OR LOWER(client_email) = LOWER(?)
+           ORDER BY created_at DESC`
         )
-        .all(req.user.id);
+        .all(req.user.id, req.user.email || "");
+      if (rows.length === 0) {
+        rows = db
+          .prepare(
+            `SELECT * FROM bookings WHERE promoter_id = ? ORDER BY created_at DESC`
+          )
+          .all(req.user.id);
+      }
     }
   } else {
     // Unauthenticated: return empty (don't leak all bookings)
