@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import MessagesPanel from "../../components/Messages/MessagesPanel";
+import CountUp from "../../components/animations/CountUp";
 import {
   getDemoGigs,
   loadBookingsForUser,
@@ -178,7 +179,12 @@ export default function PromoterDashboard() {
       </div>
 
       <div className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-lg font-bold text-slate-900">Your booking requests</h2>
+        <h2 className="text-lg font-bold text-slate-900">
+          Your booking requests
+          <span className="ml-2 text-sm font-semibold text-slate-400">
+            (<CountUp value={gigs.length} className="tabular-nums" />)
+          </span>
+        </h2>
         {gigs.length === 0 ? (
           <p className="mt-3 text-sm text-slate-500">
             No requests yet.{" "}

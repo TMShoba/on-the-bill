@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import CountUp from "./animations/CountUp";
 import type { Booking } from "../Types/Artist";
 
 const MONTHS = [
@@ -111,7 +112,7 @@ export default function EarningsStats({ gigs }: Props) {
             Total earned
           </p>
           <p className="mt-1 text-2xl font-extrabold text-emerald-700">
-            R{stats.totalEarned.toLocaleString()}
+            <CountUp value={stats.totalEarned} prefix="R" className="tabular-nums" />
           </p>
         </div>
         <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
@@ -119,7 +120,7 @@ export default function EarningsStats({ gigs }: Props) {
             Gigs played
           </p>
           <p className="mt-1 text-2xl font-extrabold text-slate-900">
-            {stats.gigsPlayed}
+            <CountUp value={stats.gigsPlayed} className="tabular-nums" />
           </p>
         </div>
         <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
@@ -135,7 +136,7 @@ export default function EarningsStats({ gigs }: Props) {
             Pipeline (pending)
           </p>
           <p className="mt-1 text-2xl font-extrabold text-amber-700">
-            R{stats.pendingValue.toLocaleString()}
+            <CountUp value={stats.pendingValue} prefix="R" className="tabular-nums" />
           </p>
         </div>
       </div>

@@ -4,6 +4,7 @@ import NavBar from "../components/NavBar";
 import Footer from "../components/Footer";
 import { useArtists } from "../hooks/useArtists";
 import BlurText from "../components/animations/BlurText";
+import PageTransition from "../components/animations/PageTransition";
 
 export default function Artists() {
   const [q, setQ] = useState("");
@@ -76,7 +77,7 @@ export default function Artists() {
     <div className="min-h-dvh flex flex-col bg-slate-50 pb-mobile-nav">
       <NavBar />
 
-      <div className="flex-1 w-full mx-auto max-w-6xl px-3 py-6 sm:px-6 sm:py-14 animate-fade-up">
+      <PageTransition className="flex-1 w-full mx-auto max-w-6xl px-3 py-6 sm:px-6 sm:py-14">
         <div className="mb-8">
           <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">
             <BlurText
@@ -258,7 +259,7 @@ export default function Artists() {
             ))}
           </div>
         )}
-      </div>
+      </PageTransition>
       <Footer />
     </div>
   );

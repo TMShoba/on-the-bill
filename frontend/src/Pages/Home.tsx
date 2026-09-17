@@ -6,6 +6,9 @@ import { artistImage } from "../utils/imageCdn";
 import BlurText from "../components/animations/BlurText";
 import TextType from "../components/animations/TextType";
 import FadeIn, { Stagger, StaggerItem } from "../components/animations/FadeIn";
+import ParticleBackground from "../components/animations/ParticleBackground";
+import PageTransition from "../components/animations/PageTransition";
+import CountUp from "../components/animations/CountUp";
 
 const roster = [
   { id: "1", name: "Tyla", tag: "Pop / Amapiano" },
@@ -28,7 +31,7 @@ export default function Home() {
       {/* Live activity strip — directly under navbar */}
       <ActivityFeed />
 
-      <div className="flex-1">
+      <PageTransition className="flex-1">
       {/* HERO — dark, high-impact */}
       <section className="relative overflow-hidden">
         <div className="absolute inset-0">
@@ -39,6 +42,7 @@ export default function Home() {
           />
           <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/90 to-slate-950/40" />
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-slate-950/60" />
+          <ParticleBackground count={56} tone="mixed" opacity={0.7} />
         </div>
 
         <div className="relative mx-auto max-w-6xl px-4 pb-24 pt-20 sm:px-6 sm:pb-32 sm:pt-28">
@@ -98,7 +102,9 @@ export default function Home() {
 
           <div className="mt-14 flex flex-wrap gap-8 border-t border-white/10 pt-8 text-sm">
             <div>
-              <p className="text-3xl font-black text-white">25+</p>
+              <p className="text-3xl font-black text-white">
+                <CountUp value={25} suffix="+" className="tabular-nums" />
+              </p>
               <p className="text-slate-400">Artists live</p>
             </div>
             <div>
@@ -261,7 +267,7 @@ export default function Home() {
         </Link>
       </section>
 
-      </div>
+      </PageTransition>
       <Footer />
     </div>
   );

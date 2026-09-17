@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import CountUp from "../../components/animations/CountUp";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import GigCalendar from "../../components/GigCalendar";
 import GigDetailsModal from "../../components/GigDetailsModal";
@@ -194,15 +195,15 @@ export default function ArtistDashboard() {
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <p className="text-sm text-slate-500">Confirmed</p>
-              <p className="text-2xl font-bold text-emerald-600">{stats.confirmed}</p>
+              <p className="text-2xl font-bold text-emerald-600"><CountUp value={stats.confirmed} className="tabular-nums" /></p>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <p className="text-sm text-slate-500">Pending requests</p>
-              <p className="text-2xl font-bold text-amber-600">{stats.pending}</p>
+              <p className="text-2xl font-bold text-amber-600"><CountUp value={stats.pending} className="tabular-nums" /></p>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <p className="text-sm text-slate-500">Declined</p>
-              <p className="text-2xl font-bold text-rose-500">{stats.declined}</p>
+              <p className="text-2xl font-bold text-rose-500"><CountUp value={stats.declined} className="tabular-nums" /></p>
             </div>
           </div>
 

@@ -3,6 +3,8 @@ import { Link, useNavigate } from "react-router-dom";
 import NavBar from "../components/NavBar";
 import BlurText from "../components/animations/BlurText";
 import BrandLogo from "../components/BrandLogo";
+import ParticleBackground from "../components/animations/ParticleBackground";
+import PageTransition from "../components/animations/PageTransition";
 import Footer from "../components/Footer";
 import { useAuth } from "../context/AuthContext";
 
@@ -39,10 +41,13 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-dvh flex flex-col bg-gradient-to-b from-slate-50 to-emerald-50/40 pb-mobile-nav">
+    <div className="relative min-h-dvh flex flex-col bg-gradient-to-b from-slate-50 to-emerald-50/40 pb-mobile-nav">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden opacity-60">
+        <ParticleBackground count={36} tone="emerald" opacity={0.45} />
+      </div>
       <NavBar />
 
-      <div className="flex-1 w-full mx-auto flex max-w-md flex-col px-4 py-14 sm:py-20">
+      <PageTransition className="relative z-10 flex-1 w-full mx-auto flex max-w-md flex-col px-4 py-14 sm:py-20">
         <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm sm:p-10">
           <div className="mb-8 text-center">
             <div className="mb-4 flex justify-center">
@@ -148,7 +153,7 @@ export default function Login() {
             </Link>
           </p>
         </div>
-      </div>
+      </PageTransition>
       <Footer />
     </div>
   );

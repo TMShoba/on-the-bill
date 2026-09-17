@@ -1,6 +1,7 @@
 import {type FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import NavBar from "../components/NavBar";
+import ParticleBackground from "../components/animations/ParticleBackground";
 import Footer from "../components/Footer";
 import { register, saveAuth } from "../Services/authService";
 
@@ -36,7 +37,10 @@ export default function Register() {
   }
 
   return (
-    <div className="min-h-dvh flex flex-col bg-gradient-to-b from-slate-50 to-emerald-50/40 pb-mobile-nav">
+    <div className="relative min-h-dvh flex flex-col bg-gradient-to-b from-slate-50 to-emerald-50/40 pb-mobile-nav">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden opacity-50">
+        <ParticleBackground count={32} tone="emerald" opacity={0.4} />
+      </div>
       <NavBar />
 
       <div className="flex-1 w-full mx-auto flex max-w-md flex-col px-4 py-14 sm:py-20">
