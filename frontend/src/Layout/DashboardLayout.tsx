@@ -1,4 +1,5 @@
 import { Outlet, Link, NavLink } from "react-router-dom";
+import BrandLogo from "../components/BrandLogo";
 
 export default function DashboardLayout() {
   const linkClass = ({ isActive }: { isActive: boolean }) =>
@@ -12,15 +13,7 @@ export default function DashboardLayout() {
     <div className="flex min-h-screen flex-col bg-slate-50 md:flex-row">
       <aside className="w-full border-b border-slate-200 bg-white md:w-64 md:border-b-0 md:border-r">
         <div className="flex h-16 items-center px-5">
-          <Link
-            to="/"
-            className="flex items-center gap-2 text-lg font-extrabold tracking-tight text-slate-900"
-          >
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900 text-sm font-bold text-white">
-              OB
-            </span>
-            The LineUp
-          </Link>
+          <BrandLogo to="/" size="md" variant="dark" />
         </div>
 
         <nav className="space-y-1 px-3 pb-6">

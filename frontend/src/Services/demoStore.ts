@@ -17,22 +17,30 @@ import {
 
 const GIGS_KEY = "otb_demo_gigs";
 
-/** Demo artist / promoter accounts */
+/**
+ * Demo accounts — must match backend seed (see backend/src/seed.js).
+ * Artist is linked to catalog id "2" (DJ Maphorisa) so bookings & listings align.
+ * Password for both when logging in via API: Demo1234!
+ */
 export const DEMO_ARTIST = {
-  id: "artist-demo-1",
+  id: "demo-artist-user-001",
   name: "DJ Maphorisa",
   email: "artist@thelineup.co.za",
   role: "artist" as const,
+  artistId: "2",
   createdAt: new Date().toISOString(),
 };
 
 export const DEMO_PROMOTER = {
-  id: "promoter-demo-1",
+  id: "demo-promoter-user-001",
   name: "Thabo Events",
   email: "promoter@thelineup.co.za",
   role: "promoter" as const,
   createdAt: new Date().toISOString(),
 };
+
+/** Catalog artist id used for demo artist bookings */
+export const DEMO_CATALOG_ARTIST_ID = "2";
 
 function readGigs(): Booking[] {
   try {
@@ -68,7 +76,7 @@ export function ensureDemoGigs() {
   const seed: Booking[] = [
     {
       id: "gig-1",
-      artistId: DEMO_ARTIST.id,
+      artistId: DEMO_CATALOG_ARTIST_ID,
       artistName: DEMO_ARTIST.name,
       clientName: "Sandton Lifestyle",
       clientEmail: "events@sandton.co.za",
@@ -89,7 +97,7 @@ export function ensureDemoGigs() {
     },
     {
       id: "gig-2",
-      artistId: DEMO_ARTIST.id,
+      artistId: DEMO_CATALOG_ARTIST_ID,
       artistName: DEMO_ARTIST.name,
       clientName: DEMO_PROMOTER.name,
       clientEmail: DEMO_PROMOTER.email,
@@ -109,7 +117,7 @@ export function ensureDemoGigs() {
     },
     {
       id: "gig-3",
-      artistId: DEMO_ARTIST.id,
+      artistId: DEMO_CATALOG_ARTIST_ID,
       artistName: DEMO_ARTIST.name,
       clientName: "Durban July Events",
       clientEmail: "bookings@durbanjuly.co.za",
@@ -129,7 +137,7 @@ export function ensureDemoGigs() {
     },
     {
       id: "gig-4",
-      artistId: DEMO_ARTIST.id,
+      artistId: DEMO_CATALOG_ARTIST_ID,
       artistName: DEMO_ARTIST.name,
       clientName: "Private client",
       clientEmail: "private@example.com",

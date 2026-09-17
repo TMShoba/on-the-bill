@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { motion } from "motion/react";
 import { useState } from "react";
 import { resolveArtistImage } from "../utils/imageCdn";
 import VerificationBadge from "./VerificationBadge";
@@ -38,6 +39,14 @@ export default function ArtistCard({ artist }: ArtistCardProps) {
   }
 
   return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, amount: 0.2 }}
+      transition={{ duration: 0.4 }}
+      whileHover={{ y: -4 }}
+      className="h-full"
+    >
     <Link
       to={`/artists/${artist.id}`}
       className="group relative block overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition duration-300 hover:-translate-y-1 hover:border-slate-300 hover:shadow-xl"
@@ -93,5 +102,6 @@ export default function ArtistCard({ artist }: ArtistCardProps) {
         </div>
       </div>
     </Link>
+    </motion.div>
   );
 }

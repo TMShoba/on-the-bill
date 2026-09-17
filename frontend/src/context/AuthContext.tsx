@@ -12,7 +12,12 @@ import {
   DEMO_PROMOTER,
   ensureDemoGigs,
 } from "../Services/demoStore";
-import { saveAuth, clearAuth, getStoredUser, updateStoredUser } from "../Services/authService";
+import {
+  saveAuth,
+  clearAuth,
+  getStoredUser,
+  updateStoredUser,
+} from "../Services/authService";
 
 type AuthContextValue = {
   user: User | null;
@@ -31,6 +36,32 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+const DEMO_PASSWORD = "Demo1234!";
+
+function mapApiUser(resUser: {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  artistId?: string;
+  createdAt?: string;
+}): User {
+  const role: UserRole =
+    resUser.role === "artist"
+      ? "artist"
+      : resUser.role === "client"
+        ? "promoter"
+        : (resUser.role as UserRole);
+  return {
+    id: resUser.id,
+    name: resUser.name,
+    email: resUser.email,
+    role,
+    artistId: resUser.artistId,
+    createdAt: resUser.createdAt || new Date().toISOString(),
+  };
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => {
     const stored = getStoredUser();
@@ -41,37 +72,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return null;
   });
 
-  const loginDemo = useCallback((role: "artist" | "promoter") => {
+  const loginDemo = useCallback(async (role: "artist" | "promoter") => {
     const demo = role === "artist" ? DEMO_ARTIST : DEMO_PROMOTER;
     ensureDemoGigs();
-    saveAuth(`demo-token-${demo.id}`, demo);
-    setUser(demo);
+
+    // Prefer real API login so bookings come from SQLite and IDs match
+    try {
+      const { login } = await import("../Services/authService");
+      const res = await login({
+        email: demo.email,
+        password: DEMO_PASSWORD,
+      });
+      const mapped = mapApiUser(res.user);
+      // Ensure artist always has catalog link
+      if (role === "artist" && !mapped.artistId) {
+        mapped.artistId = DEMO_ARTIST.artistId;
+      }
+      saveAuth(res.token, mapped);
+      setUser(mapped);
+      return;
+    } catch {
+      // API offline — local demo token (backend ALLOW_DEMO_TOKENS=true)
+      saveAuth(`demo-token-${demo.id}`, demo);
+      setUser(demo);
+    }
   }, []);
 
   const loginWithCredentials = useCallback(
     async (email: string, password: string) => {
-      // Demo shortcuts
-      if (email.toLowerCase() === DEMO_ARTIST.email) {
-        loginDemo("artist");
+      const normalized = email.toLowerCase().trim();
+
+      // Demo emails → same path as quick login (API first)
+      if (normalized === DEMO_ARTIST.email.toLowerCase()) {
+        await loginDemo("artist");
         return;
       }
-      if (email.toLowerCase() === DEMO_PROMOTER.email) {
-        loginDemo("promoter");
+      if (normalized === DEMO_PROMOTER.email.toLowerCase()) {
+        await loginDemo("promoter");
         return;
       }
 
-      // Fall through to real API if available
       const { login } = await import("../Services/authService");
       const res = await login({ email, password });
-      const mapped: User = {
-        ...res.user,
-        role:
-          res.user.role === "artist"
-            ? "artist"
-            : res.user.role === "client"
-              ? "promoter"
-              : (res.user.role as UserRole),
-      };
+      const mapped = mapApiUser(res.user);
       saveAuth(res.token, mapped);
       setUser(mapped);
     },
@@ -87,38 +130,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }) => {
       const { register: apiRegister } = await import("../Services/authService");
       const role =
-        input.role === "promoter" ? "client" : input.role === "artist" ? "artist" : "client";
+        input.role === "promoter"
+          ? "client"
+          : input.role === "artist"
+            ? "artist"
+            : "client";
       const res = await apiRegister({
         name: input.name,
         email: input.email,
         password: input.password,
         role: role as "client" | "artist",
       });
-      const mapped: User = {
-        ...res.user,
-        role: input.role,
-      };
+      const mapped = mapApiUser({ ...res.user, role: input.role });
       saveAuth(res.token, mapped);
       setUser(mapped);
     },
     []
   );
 
+  const updateUser = useCallback((patch: Partial<User>) => {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, ...patch };
+      updateStoredUser(next);
+      return next;
+    });
+  }, []);
+
   const logout = useCallback(() => {
     clearAuth();
     setUser(null);
-  }, []);
-
-  const updateUser = useCallback((patch: Partial<User>) => {
-    const next = updateStoredUser(patch);
-    if (next) setUser(next as User);
   }, []);
 
   const value = useMemo(
     () => ({
       user,
       isAuthenticated: Boolean(user),
-      loginDemo,
+      loginDemo: (role: "artist" | "promoter") => {
+        void loginDemo(role);
+      },
       loginWithCredentials,
       register,
       updateUser,
@@ -127,7 +177,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [user, loginDemo, loginWithCredentials, register, updateUser, logout]
   );
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+  );
 }
 
 export function useAuth() {

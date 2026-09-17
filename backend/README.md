@@ -1,70 +1,47 @@
-# The LineUp — API (SQLite)
+# The LineUp — API
 
-Express + SQLite backend. Data persists in `data/onthebill.db`.
+Express + SQLite backend for The LineUp (artist booking platform).
 
-## Setup
+## Quick start
 
 ```bash
 cd backend
+cp .env.example .env   # edit JWT_SECRET, SMTP, PayFast as needed
 npm install
 npm run dev
 ```
 
-API: **http://localhost:4000**
+API: **http://localhost:4000**  
+Health: `GET /api/health`
 
-On first start, artists are seeded automatically.
+Artist catalog seeds automatically when the database is empty.
 
-## Environment variables (optional)
+## Environment
 
-Create a `.env` file (or set these on your host) to enable real email
-delivery. Without them, the notifications route logs what it would have
-sent instead of failing — local dev works either way.
+| Variable | Purpose |
+|----------|---------|
+| `JWT_SECRET` | Signs auth tokens (required strong value in production) |
+| `CORS_ORIGINS` | Comma-separated allowed frontend origins |
+| `ALLOW_DEMO_TOKENS` | `true` only for local demos |
+| `SMTP_*` | Transactional email (optional) |
+| `PAYFAST_*` | Live payment ITN verification |
+| `INTERNAL_API_KEY` | Trusted server-to-server payment updates |
 
-```
-SMTP_HOST=smtp.yourprovider.com
-SMTP_PORT=587
-SMTP_SECURE=false
-SMTP_USER=your-smtp-username
-SMTP_PASS=your-smtp-password
-SMTP_FROM=The LineUp <no-reply@thelineup.co.za>
-```
+## Auth
 
-Any SMTP provider works — SendGrid, Postmark, Resend (SMTP mode), or a
-Gmail app password for early testing.
+- Register / login return a **signed JWT** (not demo tokens).
+- Send `Authorization: Bearer <token>` on protected routes.
+- `GET /api/auth/me` returns the current user.
 
-## Database
+## Payments
 
-- File: `backend/data/onthebill.db`
-- Tables: `artists`, `users`, `bookings`
-- Survives server restarts
-
-Manual re-seed:
-
-```bash
-npm run seed
-```
-
-## Endpoints
-
-- `GET /api/artists` — list, supports `?q=&genre=&location=`
-- `GET /api/artists/:id`
-- `GET|POST /api/bookings`
-- `PATCH /api/bookings/:id` — update status (pending/confirmed/declined)
-- `POST /api/auth/register`
-- `POST /api/auth/login`
-- `POST /api/notifications/email` — sends the four booking-critical emails
-  (new request, accepted, declined, payment received). Called by the
-  frontend's `emailService.ts`.
+- Frontend starts PayFast checkout.
+- PayFast calls `POST /api/payments/payfast/itn` when payment completes.
+- Bookings are marked paid/deposit **only** after ITN (or trusted internal key).
 
 ## Security notes
 
-- **Passwords are hashed with bcrypt** as of this version. Existing accounts
-  created before this change are upgraded automatically the next time they
-  log in successfully — no manual migration needed.
-- `demo-token-<userId>` auth tokens are for this demo only — not signed, not
-  expiring. Fine for a prototype; swap for real JWTs (or a session store)
-  before handling real money or real user data at scale.
-- `PATCH /api/bookings/:id` currently has no auth/ownership check — anyone
-  who knows a booking ID can change its status. Worth locking down (require
-  the logged-in artist to own the booking) before this is the primary
-  booking path in production.
+- Passwords are bcrypt-hashed.
+- Rate limits on auth and general API.
+- Clients cannot manually set `status=paid`.
+- Set `ALLOW_DEMO_TOKENS=false` and a strong `JWT_SECRET` before public launch.

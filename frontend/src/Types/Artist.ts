@@ -45,6 +45,8 @@ export type User = {
   name: string;
   email: string;
   role: UserRole;
+  /** Catalog artist id when role is artist (e.g. "2" for DJ Maphorisa) */
+  artistId?: string;
   createdAt: string;
 };
 

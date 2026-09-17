@@ -3,6 +3,7 @@ import ArtistCard from "../components/ArtistCard";
 import NavBar from "../components/NavBar";
 import Footer from "../components/Footer";
 import { useArtists } from "../hooks/useArtists";
+import BlurText from "../components/animations/BlurText";
 
 export default function Artists() {
   const [q, setQ] = useState("");
@@ -78,7 +79,13 @@ export default function Artists() {
       <div className="flex-1 w-full mx-auto max-w-6xl px-3 py-6 sm:px-6 sm:py-14 animate-fade-up">
         <div className="mb-8">
           <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">
-            Browse Artists
+            <BlurText
+              text="Browse Artists"
+              delay={90}
+              animateBy="words"
+              direction="top"
+              className="justify-start"
+            />
           </h1>
           <p className="mt-2 text-slate-600">
             Verified DJs and producers ready for your next event

@@ -1,9 +1,17 @@
-import db from "../db.js";
+import { one } from "../db.js";
+import { verifyToken, parseLegacyDemoToken } from "../lib/tokens.js";
 
-/**
- * Optional auth: attaches req.user when Authorization: Bearer demo-token-{userId}
- * (matches current frontend tokens). Does not reject anonymous requests.
- */
+function mapRowToUser(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    role: row.role === "client" ? "promoter" : row.role,
+    artistId: row.artist_id || null,
+    createdAt: row.created_at,
+  };
+}
+
 export function optionalAuth(req, _res, next) {
   const header = req.headers.authorization || "";
   const match = header.match(/^Bearer\s+(.+)$/i);
@@ -12,39 +20,37 @@ export function optionalAuth(req, _res, next) {
     return next();
   }
   const token = match[1].trim();
-  let userId = null;
-  if (token.startsWith("demo-token-")) {
-    userId = token.slice("demo-token-".length);
-  } else {
-    // Future JWT: treat whole token as opaque user id for demo
-    userId = token;
-  }
-  const row = db.prepare("SELECT * FROM users WHERE id = ?").get(userId);
-  if (row) {
-    req.user = {
-      id: row.id,
-      name: row.name,
-      email: row.email,
-      role: row.role === "client" ? "promoter" : row.role,
-      artistId: row.artist_id || null,
-      createdAt: row.created_at,
-    };
-  } else {
-    // Allow demo tokens for offline-seeded ids not in DB (artist-demo-1 etc.)
-    req.user = {
-      id: userId,
-      name: "",
-      email: "",
-      role: userId.includes("artist") ? "artist" : "promoter",
-      artistId: userId.includes("artist") ? userId : null,
-      createdAt: new Date().toISOString(),
-      ephemeral: true,
-    };
-  }
-  next();
+
+  (async () => {
+    const payload = verifyToken(token);
+    if (payload) {
+      const row = await one("SELECT * FROM users WHERE id = $1", [payload.sub]);
+      req.user = row ? mapRowToUser(row) : null;
+      return next();
+    }
+    const legacy = parseLegacyDemoToken(token);
+    if (legacy) {
+      const row = await one("SELECT * FROM users WHERE id = $1", [legacy.sub]);
+      if (row) {
+        req.user = mapRowToUser(row);
+        return next();
+      }
+      req.user = {
+        id: legacy.sub,
+        name: "",
+        email: "",
+        role: legacy.role || "promoter",
+        artistId: legacy.artistId || null,
+        createdAt: new Date().toISOString(),
+        ephemeral: true,
+      };
+      return next();
+    }
+    req.user = null;
+    next();
+  })().catch(next);
 }
 
-/** Require a resolved user */
 export function requireAuth(req, res, next) {
   optionalAuth(req, res, () => {
     if (!req.user || !req.user.id) {

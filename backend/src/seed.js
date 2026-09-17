@@ -1,59 +1,237 @@
-import db from "./db.js";
+import bcrypt from "bcryptjs";
+import { one, query } from "./db.js";
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS artists (
-    id TEXT PRIMARY KEY,
-    stage_name TEXT NOT NULL,
-    genre TEXT,
-    location TEXT,
-    rate INTEGER,
-    image_url TEXT,
-    bio TEXT
-  );
-`);
+const DEMO_ARTIST_USER_ID = "demo-artist-user-001";
+const DEMO_PROMOTER_USER_ID = "demo-promoter-user-001";
+const DEMO_CATALOG_ARTIST_ID = "2";
+const DEMO_PASSWORD = "Demo1234!";
 
 const artists = [
-  { id: "1", stage_name: "Tyla", genre: "Pop / Amapiano", location: "Johannesburg", rate: 45000, image_url: "/artists/tyla.webp", bio: "Global pop and Amapiano star with the highest monthly listeners among SA acts. Grammy-winning artist putting South African sound on the world stage." },
-  { id: "2", stage_name: "DJ Maphorisa", genre: "Amapiano", location: "Johannesburg", rate: 15000, image_url: "/artists/maphorisa.webp", bio: "Top Amapiano producer and hitmaker. Known for chart-topping collaborations and high-energy sets across South Africa and beyond." },
-  { id: "3", stage_name: "Master KG", genre: "Amapiano / Afro Pop", location: "Limpopo", rate: 30000, image_url: "/artists/master-kg.webp", bio: "Global sensation known for Jerusalema. Producer and artist who took South African dance music to the world." },
-  { id: "4", stage_name: "Kabza De Small", genre: "Amapiano", location: "Pretoria", rate: 18000, image_url: "/artists/kabza.webp", bio: "The acclaimed King of Amapiano. His productions have defined the sound of a generation across the continent." },
-  { id: "5", stage_name: "Nomcebo Zikode", genre: "Afro Pop / Gospel", location: "Johannesburg", rate: 20000, image_url: "/artists/nomcebo.webp", bio: "Vocalist famous for massive international hits. Powerful voice behind some of SA's biggest crossover records." },
-  { id: "6", stage_name: "Shimza", genre: "House / Electronic", location: "Johannesburg", rate: 25000, image_url: "/artists/shimza.webp", bio: "Electronic and house music heavyweight. Festival favourite with a global DJ footprint." },
-  { id: "7", stage_name: "Black Coffee", genre: "Afro House", location: "Durban", rate: 50000, image_url: "/artists/black-coffee.webp", bio: "Grammy-winning international house DJ and producer. One of Africa's most influential electronic artists." },
-  { id: "8", stage_name: "Tyler ICU", genre: "Amapiano", location: "Johannesburg", rate: 16000, image_url: "/artists/tyler-icu.webp", bio: "Chart-topping Amapiano producer behind major club anthems and viral dance tracks." },
-  { id: "9", stage_name: "Nasty C", genre: "Hip Hop", location: "Durban", rate: 30000, image_url: "/artists/nasty-c.webp", bio: "South Africa's leading hip-hop export. Known for technical skill, catchy hooks, and sold-out shows." },
-  { id: "10", stage_name: "Sjava", genre: "Afro Soul / Maskandi", location: "Durban", rate: 22000, image_url: "/artists/sjava.webp", bio: "Award-winning Afro-soul and hip-hop artist. Blends maskandi, storytelling and contemporary SA sound." },
-  { id: "11", stage_name: "Kelvin Momo", genre: "Private School Piano", location: "Johannesburg", rate: 16000, image_url: "/artists/kelvin-momo.webp", bio: "Pioneer of private-school Amapiano. Smooth, soulful productions that define late-night sessions nationwide." },
-  { id: "12", stage_name: "Mellow & Sleazy", genre: "Amapiano", location: "Pretoria", rate: 18000, image_url: "/artists/mellow-sleazy.webp", bio: "Popular Amapiano production duo. Hard-hitting log drums and anthemic club energy." },
-  { id: "13", stage_name: "Focalistic", genre: "Amapiano", location: "Pretoria", rate: 22000, image_url: "/artists/focalistic.webp", bio: "High-energy Amapiano rapper and performer. Street energy with melodic hooks for clubs and festivals." },
-  { id: "14", stage_name: "Uncle Waffles", genre: "Amapiano", location: "Eswatini / Johannesburg", rate: 28000, image_url: "/artists/uncle-waffles.webp", bio: "Global Amapiano DJ and festival headliner. Iconic dances and main-stage presence worldwide." },
-  { id: "15", stage_name: "Makhadzi", genre: "Limpopo Pop / Dance", location: "Limpopo", rate: 18000, image_url: "/artists/makhadzi.webp", bio: "Limpopo pop and dance queen. High-energy performer with a massive local following." },
-  { id: "16", stage_name: "Young Stunna", genre: "Amapiano", location: "Johannesburg", rate: 15000, image_url: "/artists/young-stunna.webp", bio: "Vocal powerhouse on major Amapiano tracks. Sought after for live performances and collabs." },
-  { id: "17", stage_name: "Boohle", genre: "Amapiano", location: "Johannesburg", rate: 17000, image_url: "/artists/boohle.webp", bio: "Talented singer and songwriter in the dance scene. Voice behind countless Amapiano hits." },
-  { id: "18", stage_name: "Nkosazana Daughter", genre: "Amapiano", location: "Johannesburg", rate: 14000, image_url: "/artists/nkosazana.webp", bio: "Sought-after vocal collaborator in Amapiano. Distinctive voice on major dancefloor records." },
-  { id: "19", stage_name: "Blxckie", genre: "Hip Hop", location: "Durban", rate: 14000, image_url: "/artists/blxckie.webp", bio: "Versatile modern hip-hop and trap star. Melodic flows and viral hits from Durban." },
-  { id: "20", stage_name: "Musa Keys", genre: "Amapiano", location: "Johannesburg", rate: 16000, image_url: "/artists/musa-keys.webp", bio: "Amapiano star with massive cross-border appeal. Producer and performer with club-ready hits." },
-  { id: "21", stage_name: "A-Reece", genre: "Hip Hop", location: "Pretoria", rate: 25000, image_url: "/artists/areece.webp", bio: "One of South Africa's most respected lyricists. Known for introspective bars, independent hustle, and a cult following across the country." },
-  { id: "22", stage_name: "Dlala Thukzin", genre: "Gqom", location: "Durban", rate: 20000, image_url: "/artists/dlala-thukzin.webp", bio: "Durban-based Gqom producer known for high-energy club anthems and collaborations that dominate dance floors nationwide." },
-  { id: "23", stage_name: "DBN Gogo", genre: "Amapiano", location: "Durban", rate: 20000, image_url: "/artists/dbn-gogo.webp", bio: "One of South Africa's most recognized Amapiano DJs with major local and international performances." },
-  { id: "24", stage_name: "Oscar Mbo", genre: "House", location: "Johannesburg", rate: 18000, image_url: "/artists/oscar-mbo.webp", bio: "Deep house DJ and producer known for soulful grooves and premium live sets." },
-  { id: "25", stage_name: "Cassper Nyovest", genre: "Hip Hop", location: "Mahikeng / Johannesburg", rate: 35000, image_url: "/artists/cassper.webp", bio: "Multi-platinum hip-hop heavyweight and entrepreneur. Known for monumental live shows and a string of chart-topping albums." },
+  { id: "1", stage_name: "Tyla", genre: "Pop / Amapiano", location: "Johannesburg", rate: 45000, image_url: "/artists/tyla.webp", bio: "Global pop and Amapiano star." },
+  { id: "2", stage_name: "DJ Maphorisa", genre: "Amapiano", location: "Johannesburg", rate: 15000, image_url: "/artists/maphorisa.webp", bio: "Top Amapiano producer and hitmaker." },
+  { id: "3", stage_name: "Master KG", genre: "Amapiano / Afro Pop", location: "Limpopo", rate: 30000, image_url: "/artists/master-kg.webp", bio: "Global sensation known for Jerusalema." },
+  { id: "4", stage_name: "Kabza De Small", genre: "Amapiano", location: "Pretoria", rate: 18000, image_url: "/artists/kabza.webp", bio: "The King of Amapiano." },
+  { id: "5", stage_name: "Nomcebo Zikode", genre: "Afro Pop / Gospel", location: "Johannesburg", rate: 20000, image_url: "/artists/nomcebo.webp", bio: "Vocalist behind major international hits." },
+  { id: "6", stage_name: "Shimza", genre: "House / Electronic", location: "Johannesburg", rate: 25000, image_url: "/artists/shimza.webp", bio: "Electronic and house heavyweight." },
+  { id: "7", stage_name: "Black Coffee", genre: "Afro House", location: "Durban", rate: 50000, image_url: "/artists/black-coffee.webp", bio: "Grammy-winning house DJ and producer." },
+  { id: "8", stage_name: "Tyler ICU", genre: "Amapiano", location: "Johannesburg", rate: 16000, image_url: "/artists/tyler-icu.webp", bio: "Chart-topping Amapiano producer." },
+  { id: "9", stage_name: "Nasty C", genre: "Hip Hop", location: "Durban", rate: 30000, image_url: "/artists/nasty-c.webp", bio: "Leading SA hip-hop export." },
+  { id: "10", stage_name: "Focalistic", genre: "Amapiano", location: "Pretoria", rate: 18000, image_url: "/artists/focalistic.webp", bio: "Amapiano star with street appeal." },
+  { id: "11", stage_name: "Uncle Waffles", genre: "Amapiano", location: "Johannesburg", rate: 22000, image_url: "/artists/uncle-waffles.webp", bio: "High-energy Amapiano DJ." },
+  { id: "12", stage_name: "Kelvin Momo", genre: "Private School Piano", location: "Johannesburg", rate: 15000, image_url: "/artists/kelvin-momo.webp", bio: "Private School Piano pioneer." },
+  { id: "13", stage_name: "Boohle", genre: "Amapiano", location: "Johannesburg", rate: 14000, image_url: "/artists/boohle.webp", bio: "Distinctive Amapiano vocalist." },
+  { id: "14", stage_name: "Mellow & Sleazy", genre: "Amapiano", location: "Pretoria", rate: 16000, image_url: "/artists/mellow-sleazy.webp", bio: "Hit-making producer duo." },
+  { id: "15", stage_name: "Kamo Mphela", genre: "Amapiano", location: "Johannesburg", rate: 15000, image_url: "/artists/kamo-mphela.webp", bio: "Dance and vocal force." },
+  { id: "16", stage_name: "Daliwonga", genre: "Amapiano", location: "Johannesburg", rate: 14000, image_url: "/artists/daliwonga.webp", bio: "Melodic Amapiano vocalist." },
+  { id: "17", stage_name: "Ami Faku", genre: "Afro Pop / Soul", location: "Port Elizabeth", rate: 18000, image_url: "/artists/ami-faku.webp", bio: "Soulful vocalist and songwriter." },
+  { id: "18", stage_name: "Nkosazana Daughter", genre: "Amapiano", location: "Johannesburg", rate: 14000, image_url: "/artists/nkosazana.webp", bio: "Sought-after Amapiano vocalist." },
+  { id: "19", stage_name: "Blxckie", genre: "Hip Hop", location: "Durban", rate: 14000, image_url: "/artists/blxckie.webp", bio: "Modern hip-hop and trap star." },
+  { id: "20", stage_name: "Musa Keys", genre: "Amapiano", location: "Johannesburg", rate: 16000, image_url: "/artists/musa-keys.webp", bio: "Amapiano star with cross-border appeal." },
+  { id: "21", stage_name: "A-Reece", genre: "Hip Hop", location: "Pretoria", rate: 25000, image_url: "/artists/areece.webp", bio: "Respected SA lyricist." },
+  { id: "22", stage_name: "Dlala Thukzin", genre: "Gqom", location: "Durban", rate: 20000, image_url: "/artists/dlala-thukzin.webp", bio: "High-energy Gqom producer." },
+  { id: "23", stage_name: "DBN Gogo", genre: "Amapiano", location: "Durban", rate: 20000, image_url: "/artists/dbn-gogo.webp", bio: "Recognized Amapiano DJ." },
+  { id: "24", stage_name: "Oscar Mbo", genre: "House", location: "Johannesburg", rate: 18000, image_url: "/artists/oscar-mbo.webp", bio: "Deep house DJ and producer." },
+  { id: "25", stage_name: "Cassper Nyovest", genre: "Hip Hop", location: "Mahikeng / Johannesburg", rate: 35000, image_url: "/artists/cassper.webp", bio: "Multi-platinum hip-hop heavyweight." },
 ];
 
-const insert = db.prepare(`
-  INSERT OR REPLACE INTO artists (
-    id, stage_name, genre, location, rate, image_url, bio
-  ) VALUES (
-    @id, @stage_name, @genre, @location, @rate, @image_url, @bio
-  )
-`);
+function isoOffset(days, time = "21:00") {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return { date: `${y}-${m}-${day}`, time };
+}
 
-db.prepare("DELETE FROM artists").run();
+export async function seedAll() {
+  const countRow = await one("SELECT COUNT(*)::int AS c FROM artists");
+  if ((countRow?.c ?? 0) === 0) {
+    for (const a of artists) {
+      await query(
+        `INSERT INTO artists (id, stage_name, genre, location, rate, image_url, bio)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (id) DO NOTHING`,
+        [a.id, a.stage_name, a.genre, a.location, a.rate, a.image_url, a.bio]
+      );
+    }
+    console.log(`Seed: artists inserted (${artists.length})`);
+  } else {
+    await query(
+      `INSERT INTO artists (id, stage_name, genre, location, rate, image_url, bio)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       ON CONFLICT (id) DO UPDATE SET stage_name = EXCLUDED.stage_name`,
+      [
+        artists[1].id,
+        artists[1].stage_name,
+        artists[1].genre,
+        artists[1].location,
+        artists[1].rate,
+        artists[1].image_url,
+        artists[1].bio,
+      ]
+    );
+    console.log(`Seed: artists already present (${countRow.c}) — kept`);
+  }
 
-const insertMany = db.transaction((rows) => {
-  for (const row of rows) insert.run(row);
-});
+  const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 12);
 
-insertMany(artists);
-const count = db.prepare("SELECT COUNT(*) AS c FROM artists").get();
-console.log(`Seed complete. Artists: ${count.c}`);
+  async function upsertUser({ id, name, email, role, artistId }) {
+    const existing = await one(
+      "SELECT id FROM users WHERE LOWER(email) = LOWER($1)",
+      [email]
+    );
+    if (existing) {
+      await query(
+        `UPDATE users SET name = $1, password = $2, role = $3, artist_id = $4
+         WHERE id = $5`,
+        [name, passwordHash, role, artistId, existing.id]
+      );
+    } else {
+      await query(
+        `INSERT INTO users (id, name, email, password, role, artist_id, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+        [id, name, email, passwordHash, role, artistId]
+      );
+    }
+  }
+
+  await upsertUser({
+    id: DEMO_ARTIST_USER_ID,
+    name: "DJ Maphorisa",
+    email: "artist@thelineup.co.za",
+    role: "artist",
+    artistId: DEMO_CATALOG_ARTIST_ID,
+  });
+  await upsertUser({
+    id: DEMO_PROMOTER_USER_ID,
+    name: "Thabo Events",
+    email: "promoter@thelineup.co.za",
+    role: "client",
+    artistId: null,
+  });
+
+  console.log("Seed: demo users ready (artist@ / promoter@  password Demo1234!)");
+
+  const g1 = isoOffset(3);
+  const g2 = isoOffset(8);
+  const g3 = isoOffset(-5);
+  const g4 = isoOffset(1);
+
+  const samples = [
+    {
+      id: "demo-booking-pending-1",
+      status: "pending",
+      payment: "unpaid",
+      venue: "Sandton Convention Centre",
+      city: "Sandton",
+      address: "161 Maude St",
+      date: g1.date,
+      time: g1.time,
+      fee: 15000,
+      message: "Amapiano night — 2 hour set.",
+      promoter_id: DEMO_PROMOTER_USER_ID,
+      client: "Thabo Events",
+      email: "promoter@thelineup.co.za",
+    },
+    {
+      id: "demo-booking-confirmed-1",
+      status: "confirmed",
+      payment: "unpaid",
+      venue: "The Orbit, Braamfontein",
+      city: "Johannesburg",
+      address: "81 De Korte St",
+      date: g2.date,
+      time: g2.time,
+      fee: 18000,
+      message: "Club residency slot.",
+      promoter_id: DEMO_PROMOTER_USER_ID,
+      client: "Thabo Events",
+      email: "promoter@thelineup.co.za",
+    },
+    {
+      id: "demo-booking-paid-1",
+      status: "confirmed",
+      payment: "paid",
+      venue: "Joburg Theatre Outdoor",
+      city: "Johannesburg",
+      address: "Loveday St",
+      date: g3.date,
+      time: "20:00",
+      fee: 20000,
+      message: "Festival side stage — completed.",
+      promoter_id: DEMO_PROMOTER_USER_ID,
+      client: "Thabo Events",
+      email: "promoter@thelineup.co.za",
+    },
+    {
+      id: "demo-booking-pending-other",
+      status: "pending",
+      payment: "unpaid",
+      venue: "Arcade Empire",
+      city: "Cape Town",
+      address: "Long St",
+      date: g4.date,
+      time: g4.time,
+      fee: 16000,
+      message: "New request from another promoter.",
+      promoter_id: null,
+      client: "Cape Town Live",
+      email: "bookings@capetownlive.co.za",
+    },
+  ];
+
+  for (const b of samples) {
+    await query(
+      `INSERT INTO bookings (
+        id, artist_id, artist_name, client_name, client_email, event_date,
+        venue, message, status, created_at, address, city, time, fee,
+        promoter_name, promoter_id, notes, reminder_opt_in, payment_status, paid_at
+      ) VALUES (
+        $1,$2,'DJ Maphorisa',$3,$4,$5,
+        $6,$7,$8,NOW(),$9,$10,$11,$12,
+        $3,$13,'',$14,$15,
+        CASE WHEN $15 = 'paid' THEN NOW() ELSE NULL END
+      )
+      ON CONFLICT (id) DO UPDATE SET
+        status = EXCLUDED.status,
+        payment_status = EXCLUDED.payment_status,
+        fee = EXCLUDED.fee,
+        event_date = EXCLUDED.event_date`,
+      [
+        b.id,
+        DEMO_CATALOG_ARTIST_ID,
+        b.client,
+        b.email,
+        b.date,
+        b.venue,
+        b.message,
+        b.status,
+        b.address,
+        b.city,
+        b.time,
+        b.fee,
+        b.promoter_id,
+        true,
+        b.payment,
+      ]
+    );
+  }
+  console.log(`Seed: ${samples.length} sample bookings linked to DJ Maphorisa (id 2)`);
+
+  const u = await one("SELECT COUNT(*)::int AS c FROM users");
+  const bk = await one("SELECT COUNT(*)::int AS c FROM bookings");
+  const a = await one("SELECT COUNT(*)::int AS c FROM artists");
+  console.log(
+    `Seed complete. Artists: ${a?.c}, Users: ${u?.c}, Bookings: ${bk?.c}`
+  );
+}
+
+const isMain =
+  process.argv[1] &&
+  (process.argv[1].endsWith("seed.js") || process.argv[1].includes("seed"));
+
+if (isMain) {
+  const { migrate } = await import("./db.js");
+  await migrate();
+  await seedAll();
+  process.exit(0);
+}

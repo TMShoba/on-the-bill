@@ -3,6 +3,9 @@ import NavBar from "../components/NavBar";
 import ActivityFeed from "../components/ActivityFeed";
 import Footer from "../components/Footer";
 import { artistImage } from "../utils/imageCdn";
+import BlurText from "../components/animations/BlurText";
+import TextType from "../components/animations/TextType";
+import FadeIn, { Stagger, StaggerItem } from "../components/animations/FadeIn";
 
 const roster = [
   { id: "1", name: "Tyla", tag: "Pop / Amapiano" },
@@ -40,12 +43,37 @@ export default function Home() {
 
         <div className="relative mx-auto max-w-6xl px-4 pb-24 pt-20 sm:px-6 sm:pb-32 sm:pt-28">
           <p className="mb-4 text-xs font-bold uppercase tracking-[0.25em] text-emerald-400">
-            South Africa&apos;s live-music booking platform
+            <TextType
+              text={[
+                "South Africa's live-music booking platform",
+                "Amapiano · Hip Hop · House · Gqom",
+                "Book talent without the WhatsApp chaos",
+              ]}
+              typingSpeed={42}
+              deletingSpeed={28}
+              pauseDuration={2200}
+              cursorCharacter="|"
+              cursorClassName="text-emerald-400"
+              className="inline"
+            />
           </p>
           <h1 className="max-w-3xl text-5xl font-black leading-[1.05] tracking-tight sm:text-6xl lg:text-7xl">
-            Build the night.
-            <br />
-            <span className="text-emerald-400">Set the lineup.</span>
+            <BlurText
+              text="Build the night."
+              delay={80}
+              animateBy="words"
+              direction="top"
+              className="justify-start"
+            />
+            <span className="text-emerald-400">
+              <BlurText
+                text="Set the lineup."
+                delay={100}
+                animateBy="words"
+                direction="bottom"
+                className="justify-start"
+              />
+            </span>
           </h1>
           <p className="mt-6 max-w-xl text-lg leading-relaxed text-slate-300 sm:text-xl">
             The LineUp connects promoters with verified SA talent — from Amapiano
@@ -139,6 +167,7 @@ export default function Home() {
           </div>
 
           <div className="mt-14 grid gap-6 md:grid-cols-3">
+            <Stagger className="contents">
             {[
               {
                 title: "Verified roster",
@@ -153,16 +182,18 @@ export default function Home() {
                 body: "In-app messages, attach riders and contracts, track pending to confirmed.",
               },
             ].map((c) => (
+              <StaggerItem key={c.title}>
               <div
-                key={c.title}
-                className="rounded-2xl border border-white/10 bg-white/5 p-7 backdrop-blur"
+                className="rounded-2xl border border-white/10 bg-white/5 p-7 backdrop-blur transition hover:border-emerald-500/30 hover:bg-white/[0.07]"
               >
                 <h3 className="text-lg font-bold">{c.title}</h3>
                 <p className="mt-2 text-sm leading-relaxed text-slate-400">
                   {c.body}
                 </p>
               </div>
+              </StaggerItem>
             ))}
+            </Stagger>
           </div>
         </div>
       </section>
@@ -211,9 +242,17 @@ export default function Home() {
 
       {/* FINAL STRIP */}
       <section className="border-t border-white/10 bg-slate-900 py-16 text-center">
+        <FadeIn>
         <h2 className="text-2xl font-black sm:text-3xl">
-          Ready to lock your next lineup?
+          <BlurText
+            text="Ready to lock your next lineup?"
+            delay={60}
+            animateBy="words"
+            direction="top"
+            className="justify-center"
+          />
         </h2>
+        </FadeIn>
         <Link
           to="/artists"
           className="mt-6 inline-flex rounded-full bg-emerald-500 px-8 py-3.5 text-sm font-bold text-slate-950 hover:bg-emerald-400"

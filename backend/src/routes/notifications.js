@@ -1,5 +1,13 @@
 import { Router } from "express";
 import nodemailer from "nodemailer";
+import { requireAuth } from "../middleware/auth.js";
+import { rateLimit } from "../lib/rateLimit.js";
+import {
+  isValidEmail,
+  normalizeEmail,
+  sanitizeString,
+} from "../lib/security.js";
+import { audit } from "../lib/audit.js";
 
 const router = Router();
 
@@ -20,60 +28,85 @@ const transporter = SMTP_CONFIGURED
 const FROM_ADDRESS =
   process.env.SMTP_FROM || "The LineUp <no-reply@thelineup.co.za>";
 
+const ALLOWED_TEMPLATES = new Set([
+  "booking_request",
+  "booking_accepted",
+  "booking_declined",
+  "payment_received",
+]);
+
 const SUBJECTS = {
-  booking_request: (d) => `New booking request from ${d.promoterName}`,
-  booking_accepted: (d) => `${d.artistName} accepted your booking request`,
-  booking_declined: (d) => `${d.artistName} declined your booking request`,
+  booking_request: (d) =>
+    `New booking request from ${sanitizeString(d.promoterName, 80)}`,
+  booking_accepted: (d) =>
+    `${sanitizeString(d.artistName, 80)} accepted your booking request`,
+  booking_declined: (d) =>
+    `${sanitizeString(d.artistName, 80)} declined your booking request`,
   payment_received: (d) =>
-    `${d.kind === "deposit" ? "Deposit" : "Payment"} received — ${d.venue}`,
+    `${d.kind === "deposit" ? "Deposit" : "Payment"} received — ${sanitizeString(d.venue, 80)}`,
 };
 
 const BODIES = {
   booking_request: (d) =>
-    `${d.promoterName} wants to book you for ${d.venue} on ${d.eventDate}.\n\n` +
+    `${sanitizeString(d.promoterName, 80)} wants to book you for ${sanitizeString(d.venue, 120)} on ${sanitizeString(d.eventDate, 40)}.\n\n` +
     `Log in to The LineUp to accept or decline this request.`,
   booking_accepted: (d) =>
-    `Good news — ${d.artistName} accepted your request for ${d.venue} on ${d.eventDate}.\n\n` +
+    `Good news — ${sanitizeString(d.artistName, 80)} accepted your request for ${sanitizeString(d.venue, 120)} on ${sanitizeString(d.eventDate, 40)}.\n\n` +
     `Log in to The LineUp to view the booking details and next steps.`,
   booking_declined: (d) =>
-    `${d.artistName} declined your request for ${d.venue} on ${d.eventDate}.\n\n` +
-    `You can browse other artists at thelineup.co.za/artists.`,
+    `${sanitizeString(d.artistName, 80)} declined your request for ${sanitizeString(d.venue, 120)} on ${sanitizeString(d.eventDate, 40)}.\n\n` +
+    `You can browse other artists on The LineUp.`,
   payment_received: (d) =>
-    `A ${d.kind === "deposit" ? "deposit" : "full payment"} of R${Number(
-      d.amount || 0
-    ).toLocaleString()} for ${d.venue} was recorded on The LineUp.\n\n` +
-    `You can view the receipt from the booking's details.`,
+    `A ${d.kind === "deposit" ? "deposit" : "full payment"} of R${Number(d.amount || 0).toLocaleString()} for ${sanitizeString(d.venue, 120)} was recorded on The LineUp.\n\n` +
+    `You can view the receipt from the booking details.`,
 };
 
-// POST /api/notifications/email
-// Body: { to, subject?, template, data }
-router.post("/email", async (req, res) => {
-  const { to, template, data } = req.body || {};
+const emailLimiter = rateLimit({
+  windowMs: 60 * 60_000,
+  max: Number(process.env.RATE_LIMIT_EMAIL || 20),
+  key: "email",
+});
+
+/**
+ * POST /api/notifications/email
+ * Requires auth — prevents open relay abuse.
+ * Body: { to, template, data?, subject? }
+ */
+router.post("/email", requireAuth, emailLimiter, async (req, res) => {
+  const to = normalizeEmail(req.body?.to);
+  const template = sanitizeString(req.body?.template, 40);
+  const data = req.body?.data && typeof req.body.data === "object"
+    ? req.body.data
+    : {};
 
   if (!to || !template) {
     return res.status(400).json({ message: "to and template are required" });
   }
-  if (!SUBJECTS[template] || !BODIES[template]) {
+  if (!isValidEmail(to)) {
+    return res.status(400).json({ message: "Invalid recipient email" });
+  }
+  if (!ALLOWED_TEMPLATES.has(template)) {
     return res.status(400).json({ message: `Unknown template: ${template}` });
   }
 
-  const subject = req.body.subject || SUBJECTS[template](data || {});
-  const text = BODIES[template](data || {});
+  // Optional subject override — sanitized, limited
+  const subject =
+    sanitizeString(req.body?.subject, 120) || SUBJECTS[template](data);
+  const text = BODIES[template](data);
 
   if (!transporter) {
-    // No SMTP configured — log instead of failing the whole request, so
-    // local/dev environments (and CI) don't need real email credentials.
-    console.info(`[email:not-configured] Would send "${template}" to ${to}`);
-    console.info(`  Subject: ${subject}`);
-    console.info(`  Body: ${text}`);
+    console.info(`[email:not-configured] Would send "${template}" to (redacted)`);
+    audit("email_logged_only", { template, userId: req.user?.id });
     return res.json({ sent: false, reason: "SMTP not configured on server" });
   }
 
   try {
     await transporter.sendMail({ from: FROM_ADDRESS, to, subject, text });
+    audit("email_sent", { template, userId: req.user?.id });
     res.json({ sent: true });
   } catch (err) {
-    console.error("Email send failed:", err);
+    console.error("Email send failed:", err.message);
+    audit("email_fail", { template, userId: req.user?.id });
     res.status(502).json({ message: "Failed to send email" });
   }
 });

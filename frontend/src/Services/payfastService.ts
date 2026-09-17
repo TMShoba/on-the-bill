@@ -55,6 +55,10 @@ function processUrl() {
  */
 export function buildPayFastFields(input: PayFastPaymentInput): Record<string, string> {
   const amount = Math.max(5, Number(input.amount) || 0).toFixed(2);
+  const apiPublic =
+    (import.meta.env.VITE_API_PUBLIC_URL as string | undefined)?.replace(/\/+$/, "") ||
+    (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/+$/, "") ||
+    "";
   const fields: Record<string, string> = {
     merchant_id: merchantId(),
     merchant_key: merchantKey(),
@@ -67,6 +71,14 @@ export function buildPayFastFields(input: PayFastPaymentInput): Record<string, s
     amount,
     item_name: input.itemName.slice(0, 100),
   };
+  // ITN webhook — PayFast will POST payment result to the API
+  if (apiPublic) {
+    fields.notify_url = `${apiPublic}/api/payments/payfast/itn`;
+  }
+  // custom_str1 = booking id for ITN matching
+  if (input.customStr1) {
+    fields.m_payment_id = input.customStr1.slice(0, 100);
+  }
   if (input.itemDescription)
     fields.item_description = input.itemDescription.slice(0, 255);
   if (input.email) fields.email_address = input.email;
@@ -111,10 +123,11 @@ export function getManualPaymentDetails(
   amount: number,
   bookingRef: string
 ): ManualPaymentDetails {
+  // Replace with your real business banking details before going live
   return {
     bankName: "Standard Bank",
     accountName: "The LineUp (Pty) Ltd",
-    accountNumber: "0123456789",
+    accountNumber: "UPDATE-WITH-REAL-ACCOUNT",
     branchCode: "051001",
     reference: bookingRef.slice(0, 20).toUpperCase(),
     amount,

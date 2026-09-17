@@ -1,6 +1,8 @@
 import { type FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import NavBar from "../components/NavBar";
+import BlurText from "../components/animations/BlurText";
+import BrandLogo from "../components/BrandLogo";
 import Footer from "../components/Footer";
 import { useAuth } from "../context/AuthContext";
 
@@ -43,8 +45,17 @@ export default function Login() {
       <div className="flex-1 w-full mx-auto flex max-w-md flex-col px-4 py-14 sm:py-20">
         <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm sm:p-10">
           <div className="mb-8 text-center">
+            <div className="mb-4 flex justify-center">
+              <BrandLogo to="/" size="lg" variant="dark" />
+            </div>
             <h1 className="text-2xl font-extrabold text-slate-900">
-              Welcome back
+              <BlurText
+                text="Welcome back"
+                delay={80}
+                animateBy="words"
+                direction="top"
+                className="justify-center"
+              />
             </h1>
             <p className="mt-2 text-sm text-slate-500">
               Sign in to manage bookings and requests
@@ -61,9 +72,9 @@ export default function Login() {
               onClick={() => quickLogin("artist")}
               className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-left text-sm font-medium text-slate-800 shadow-sm transition hover:border-emerald-200 hover:bg-emerald-50/50 active:scale-[0.98]"
             >
-              <span className="font-semibold">Artist</span>
+              <span className="font-semibold">Artist — DJ Maphorisa</span>
               <span className="mt-0.5 block text-xs text-slate-500">
-                artist@thelineup.co.za
+                artist@thelineup.co.za · password Demo1234!
               </span>
             </button>
             <button
@@ -71,9 +82,9 @@ export default function Login() {
               onClick={() => quickLogin("promoter")}
               className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-left text-sm font-medium text-slate-800 shadow-sm transition hover:border-emerald-200 hover:bg-emerald-50/50 active:scale-[0.98]"
             >
-              <span className="font-semibold">Promoter</span>
+              <span className="font-semibold">Promoter — Thabo Events</span>
               <span className="mt-0.5 block text-xs text-slate-500">
-                promoter@thelineup.co.za
+                promoter@thelineup.co.za · password Demo1234!
               </span>
             </button>
           </div>

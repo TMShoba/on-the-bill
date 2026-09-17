@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import BrandLogo from "./BrandLogo";
 
 /**
  * Compact site footer. Parent page should use:
@@ -10,7 +11,7 @@ export default function Footer() {
     <footer className="mt-auto shrink-0 border-t border-slate-200 bg-white">
       <div className="mx-auto flex max-w-6xl flex-col items-center gap-2 px-4 py-3 sm:flex-row sm:justify-between sm:gap-4 sm:px-6 sm:py-3.5">
         <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-slate-500">
-          <span className="font-semibold text-slate-700">The LineUp</span>
+          <BrandLogo to="/" size="sm" variant="dark" />
           <span className="hidden text-slate-300 sm:inline" aria-hidden>
             ·
           </span>

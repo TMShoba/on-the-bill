@@ -1,123 +1,137 @@
-import Database from "better-sqlite3";
-import path from "path";
-import { fileURLToPath } from "url";
-import fs from "fs";
+import pg from "pg";
+import "dotenv/config";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const dbPath = path.join(__dirname, "..", "data", "onthebill.db");
+const { Pool } = pg;
 
-const dataDir = path.join(__dirname, "..", "data");
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
+/**
+ * Supabase / any Postgres.
+ * Project Settings → Database → Connection string (URI)
+ * Prefer the "Transaction" pooler URI on port 6543 for serverless,
+ * or direct 5432 for a long-running Node API on Railway/local.
+ */
+const connectionString =
+  process.env.DATABASE_URL || process.env.POSTGRES_URL || "";
+
+if (!connectionString) {
+  console.warn(
+    "[db] DATABASE_URL is not set. Add your Supabase connection string to .env"
+  );
 }
 
-const db = new Database(dbPath);
+const useSsl =
+  process.env.DATABASE_SSL === "false"
+    ? false
+    : process.env.DATABASE_SSL === "true" ||
+      /supabase\.co|neon\.tech|railway\.app/i.test(connectionString) ||
+      process.env.NODE_ENV === "production";
 
-db.pragma("journal_mode = WAL");
-db.pragma("foreign_keys = ON");
+export const pool = new Pool({
+  connectionString: connectionString || undefined,
+  ssl: useSsl ? { rejectUnauthorized: false } : undefined,
+  max: Number(process.env.DB_POOL_MAX || 10),
+});
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS artists (
-    id TEXT PRIMARY KEY,
-    stage_name TEXT NOT NULL,
-    genre TEXT NOT NULL,
-    location TEXT NOT NULL,
-    rate INTEGER NOT NULL,
-    image_url TEXT NOT NULL,
-    bio TEXT DEFAULT ''
-  );
+pool.on("error", (err) => {
+  console.error("[db] Unexpected pool error", err.message);
+});
 
-  CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    email TEXT NOT NULL UNIQUE,
-    password TEXT NOT NULL,
-    role TEXT NOT NULL CHECK(role IN ('client', 'artist', 'promoter')),
-    artist_id TEXT,
-    created_at TEXT NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS bookings (
-    id TEXT PRIMARY KEY,
-    artist_id TEXT NOT NULL,
-    artist_name TEXT NOT NULL,
-    client_name TEXT NOT NULL,
-    client_email TEXT NOT NULL,
-    event_date TEXT NOT NULL,
-    venue TEXT DEFAULT '',
-    message TEXT DEFAULT '',
-    status TEXT NOT NULL DEFAULT 'pending'
-      CHECK(status IN ('pending', 'confirmed', 'declined', 'paid')),
-    created_at TEXT NOT NULL,
-    address TEXT DEFAULT '',
-    city TEXT DEFAULT '',
-    time TEXT DEFAULT '',
-    fee INTEGER,
-    promoter_name TEXT DEFAULT '',
-    promoter_id TEXT,
-    notes TEXT DEFAULT '',
-    reminder_opt_in INTEGER DEFAULT 0,
-    payment_status TEXT DEFAULT 'unpaid'
-      CHECK(payment_status IN ('unpaid', 'deposit', 'paid', 'disputed')),
-    paid_at TEXT,
-    dispute_reason TEXT,
-    disputed_at TEXT,
-    FOREIGN KEY (artist_id) REFERENCES artists(id)
-  );
-`);
-
-/** Additive migrations for older DBs created before expanded columns */
-function ensureColumn(table, column, definition) {
-  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
-  if (!cols.some((c) => c.name === column)) {
-    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
-  }
+export async function query(text, params = []) {
+  return pool.query(text, params);
 }
 
-ensureColumn("users", "artist_id", "TEXT");
-// Allow promoter role on older DBs — SQLite can't alter CHECK easily; new inserts use app validation
+export async function one(text, params = []) {
+  const { rows } = await pool.query(text, params);
+  return rows[0] || null;
+}
 
-ensureColumn("bookings", "address", "TEXT DEFAULT ''");
-ensureColumn("bookings", "city", "TEXT DEFAULT ''");
-ensureColumn("bookings", "time", "TEXT DEFAULT ''");
-ensureColumn("bookings", "fee", "INTEGER");
-ensureColumn("bookings", "promoter_name", "TEXT DEFAULT ''");
-ensureColumn("bookings", "promoter_id", "TEXT");
-ensureColumn("bookings", "notes", "TEXT DEFAULT ''");
-ensureColumn("bookings", "reminder_opt_in", "INTEGER DEFAULT 0");
-ensureColumn("bookings", "payment_status", "TEXT DEFAULT 'unpaid'");
-ensureColumn("bookings", "paid_at", "TEXT");
-ensureColumn("bookings", "dispute_reason", "TEXT");
-ensureColumn("bookings", "disputed_at", "TEXT");
+export async function many(text, params = []) {
+  const { rows } = await pool.query(text, params);
+  return rows;
+}
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS conversations (
-    id TEXT PRIMARY KEY,
-    booking_id TEXT NOT NULL,
-    artist_id TEXT NOT NULL,
-    artist_name TEXT NOT NULL,
-    promoter_id TEXT NOT NULL,
-    promoter_name TEXT NOT NULL,
-    last_message_at TEXT NOT NULL,
-    last_message_preview TEXT DEFAULT '',
-    created_at TEXT NOT NULL
-  );
+export async function migrate() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS artists (
+      id TEXT PRIMARY KEY,
+      stage_name TEXT NOT NULL,
+      genre TEXT NOT NULL DEFAULT '',
+      location TEXT NOT NULL DEFAULT '',
+      rate INTEGER NOT NULL DEFAULT 0,
+      image_url TEXT NOT NULL DEFAULT '',
+      bio TEXT NOT NULL DEFAULT ''
+    );
 
-  CREATE TABLE IF NOT EXISTS messages (
-    id TEXT PRIMARY KEY,
-    conversation_id TEXT NOT NULL,
-    sender_id TEXT NOT NULL,
-    sender_name TEXT NOT NULL,
-    body TEXT DEFAULT '',
-    created_at TEXT NOT NULL,
-    read_flag INTEGER DEFAULT 0,
-    attachment_json TEXT,
-    FOREIGN KEY (conversation_id) REFERENCES conversations(id)
-  );
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      password TEXT NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('client', 'artist', 'promoter')),
+      artist_id TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_idx
+      ON users (LOWER(email));
 
-  CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id);
-  CREATE INDEX IF NOT EXISTS idx_conversations_artist ON conversations(artist_id);
-  CREATE INDEX IF NOT EXISTS idx_conversations_promoter ON conversations(promoter_id);
-`);
+    CREATE TABLE IF NOT EXISTS bookings (
+      id TEXT PRIMARY KEY,
+      artist_id TEXT NOT NULL REFERENCES artists(id),
+      artist_name TEXT NOT NULL,
+      client_name TEXT NOT NULL,
+      client_email TEXT NOT NULL,
+      event_date TEXT NOT NULL,
+      venue TEXT NOT NULL DEFAULT '',
+      message TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'confirmed', 'declined', 'paid')),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      address TEXT NOT NULL DEFAULT '',
+      city TEXT NOT NULL DEFAULT '',
+      time TEXT NOT NULL DEFAULT '',
+      fee INTEGER,
+      promoter_name TEXT NOT NULL DEFAULT '',
+      promoter_id TEXT,
+      notes TEXT NOT NULL DEFAULT '',
+      reminder_opt_in BOOLEAN NOT NULL DEFAULT FALSE,
+      payment_status TEXT NOT NULL DEFAULT 'unpaid'
+        CHECK (payment_status IN ('unpaid', 'deposit', 'paid', 'disputed')),
+      paid_at TIMESTAMPTZ,
+      dispute_reason TEXT,
+      disputed_at TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS bookings_artist_idx ON bookings(artist_id);
+    CREATE INDEX IF NOT EXISTS bookings_promoter_idx ON bookings(promoter_id);
+    CREATE INDEX IF NOT EXISTS bookings_client_email_idx ON bookings(LOWER(client_email));
 
-export default db;
+    CREATE TABLE IF NOT EXISTS conversations (
+      id TEXT PRIMARY KEY,
+      booking_id TEXT NOT NULL,
+      artist_id TEXT NOT NULL,
+      artist_name TEXT NOT NULL,
+      promoter_id TEXT NOT NULL,
+      promoter_name TEXT NOT NULL,
+      last_message_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_message_preview TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS conversations_booking_idx
+      ON conversations(booking_id);
+    CREATE INDEX IF NOT EXISTS conversations_artist_idx ON conversations(artist_id);
+    CREATE INDEX IF NOT EXISTS conversations_promoter_idx ON conversations(promoter_id);
+
+    CREATE TABLE IF NOT EXISTS messages (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+      sender_id TEXT NOT NULL,
+      sender_name TEXT NOT NULL,
+      body TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      read_flag BOOLEAN NOT NULL DEFAULT FALSE,
+      attachment_json TEXT
+    );
+    CREATE INDEX IF NOT EXISTS messages_conv_idx ON messages(conversation_id);
+  `);
+  console.log("[db] Schema ready (PostgreSQL / Supabase)");
+}
+
+export default { pool, query, one, many, migrate };
