@@ -58,6 +58,7 @@ const artists = [
   { id: "42", stage_name: "Ricky Lenyora", genre: "Amapiano", location: "Johannesburg", rate: 12000, image_url: "/artists/logo-ricky.jpg", bio: "Producer and performer making waves with street anthems and energetic crowd engagement." },
   { id: "43", stage_name: "DJ Stokie", genre: "Amapiano", location: "Johannesburg", rate: 18000, image_url: "/artists/dj-stokie.webp", bio: "Veteran Amapiano DJ known for soulful sets and hit collaborations across the genre." },
   { id: "44", stage_name: "Pabi Cooper", genre: "Amapiano", location: "Pretoria", rate: 18000, image_url: "/artists/pabi-cooper.webp", bio: "Singer, dancer, and performer with immense youth appeal and several chart-topping releases." },
+  { id: "45", stage_name: "Mörda",genre: "Afro House",location: "Johannesburg",rate: 28000,image_url: "/artists/morda.webp",bio: "Award-winning producer and performer known for fusing Afro House with live instrumentation and world-class stage productions." },
 ];
 
 const DEMO_ARTIST_USER_ID = "demo-artist-user-001";
