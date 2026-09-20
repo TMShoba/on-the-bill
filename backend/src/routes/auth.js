@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { v4 as uuidv4 } from "uuid";
 import bcrypt from "bcryptjs";
-import { one, query } from "../db.js";
+import db from "../db.js";
 import {
   createToken,
   verifyToken,
@@ -19,6 +19,8 @@ import {
 import { audit } from "../lib/audit.js";
 
 const router = Router();
+
+// Stricter auth limits: 10 attempts / 15 min per IP
 const authLimiter = rateLimit({
   windowMs: 15 * 60_000,
   max: Number(process.env.RATE_LIMIT_AUTH || 10),
@@ -45,18 +47,19 @@ router.post("/register", authLimiter, async (req, res) => {
     const pwErr = validatePassword(password);
     if (pwErr) return res.status(400).json({ message: pwErr });
 
-    const exists = await one(
-      "SELECT id FROM users WHERE LOWER(email) = LOWER($1)",
-      [emailNorm]
-    );
+    const exists = db
+      .prepare("SELECT id FROM users WHERE LOWER(email) = LOWER(?)")
+      .get(emailNorm);
     if (exists) {
       audit("register_conflict", { email: emailNorm });
       return res.status(409).json({ message: "Email already registered" });
     }
 
     const id = uuidv4();
+    const createdAt = new Date().toISOString();
     const userRole =
       role === "artist" ? "artist" : role === "promoter" ? "promoter" : "client";
+    // Reject arbitrary artistId binding on public register (privilege escalation)
     const artistId =
       userRole === "artist" &&
       req.body?.artistId &&
@@ -65,13 +68,12 @@ router.post("/register", authLimiter, async (req, res) => {
         : null;
 
     const passwordHash = await bcrypt.hash(password, 12);
-    await query(
+    await db.prepare(
       `INSERT INTO users (id, name, email, password, role, artist_id, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,NOW())`,
-      [id, name, emailNorm, passwordHash, userRole, artistId]
-    );
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(id, name, emailNorm, passwordHash, userRole, artistId, createdAt);
 
-    const row = await one("SELECT * FROM users WHERE id = $1", [id]);
+    const row = await db.prepare("SELECT * FROM users WHERE id = ?").get(id);
     const user = publicUser(row);
     audit("register_ok", { userId: id, role: userRole });
     res.status(201).json({ user, token: createToken(user) });
@@ -85,17 +87,18 @@ router.post("/login", authLimiter, async (req, res) => {
   try {
     const emailNorm = normalizeEmail(req.body?.email);
     const password = String(req.body?.password || "");
+
     if (!emailNorm || !password) {
       return res
         .status(400)
         .json({ message: "email and password are required" });
     }
 
-    const row = await one(
-      "SELECT * FROM users WHERE LOWER(email) = LOWER($1)",
-      [emailNorm]
-    );
+    const row = db
+      .prepare("SELECT * FROM users WHERE LOWER(email) = LOWER(?)")
+      .get(emailNorm);
 
+    // Same response for missing user vs bad password (no account enumeration)
     const fail = async () => {
       await asyncDelay(250);
       audit("login_fail", { email: emailNorm });
@@ -108,14 +111,15 @@ router.post("/login", authLimiter, async (req, res) => {
     const valid = isHashed
       ? await bcrypt.compare(password, row.password)
       : password === row.password;
+
     if (!valid) return fail();
 
     if (!isHashed) {
       const upgraded = await bcrypt.hash(password, 12);
-      await query("UPDATE users SET password = $1 WHERE id = $2", [
+      await db.prepare("UPDATE users SET password = ? WHERE id = ?").run(
         upgraded,
-        row.id,
-      ]);
+        row.id
+      );
     }
 
     const user = publicUser(row);
@@ -133,6 +137,7 @@ router.get("/me", async (req, res) => {
   if (!match) {
     return res.status(401).json({ message: "Authentication required" });
   }
+
   const token = match[1].trim();
   let userId = null;
   const payload = verifyToken(token);
@@ -144,7 +149,8 @@ router.get("/me", async (req, res) => {
   if (!userId) {
     return res.status(401).json({ message: "Invalid or expired token" });
   }
-  const row = await one("SELECT * FROM users WHERE id = $1", [userId]);
+
+  const row = await db.prepare("SELECT * FROM users WHERE id = ?").get(userId);
   if (!row) return res.status(401).json({ message: "User not found" });
   res.json({ user: publicUser(row) });
 });

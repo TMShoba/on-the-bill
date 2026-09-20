@@ -1,18 +1,21 @@
 import { Router } from "express";
 import { v4 as uuidv4 } from "uuid";
-import { one, many, query } from "../db.js";
-import { requireAuth } from "../middleware/auth.js";
+import db from "../db.js";
+import { optionalAuth, requireAuth } from "../middleware/auth.js";
 import { rateLimit } from "../lib/rateLimit.js";
 import { sanitizeString } from "../lib/security.js";
 
 const router = Router();
 
 async function mapConversation(row, userId) {
-  const unreadRow = await one(
-    `SELECT COUNT(*)::int AS n FROM messages
-     WHERE conversation_id = $1 AND sender_id != $2 AND read_flag = FALSE`,
-    [row.id, userId || ""]
-  );
+  const unreadRow = await db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM messages
+       WHERE conversation_id = ? AND sender_id != ? AND read_flag = 0`
+    )
+    .get(row.id, userId || "");
+  const unread = unreadRow?.n || 0;
+
   return {
     id: row.id,
     bookingId: row.booking_id,
@@ -22,7 +25,7 @@ async function mapConversation(row, userId) {
     promoterName: row.promoter_name,
     lastMessageAt: row.last_message_at,
     lastMessagePreview: row.last_message_preview || "",
-    unreadCount: Number(unreadRow?.n || 0),
+    unreadCount: Number(unread),
   };
 }
 
@@ -54,169 +57,192 @@ function canAccessConversation(user, row) {
   return false;
 }
 
-router.get("/conversations", requireAuth, async (req, res, next) => {
-  try {
-    const userId = req.user.id;
-    const artistKey = req.user.artistId || userId;
-    const rows = await many(
+// GET /api/messages/conversations
+router.get("/conversations", requireAuth, async (req, res) => {
+  const userId = req.user.id;
+  const artistKey = req.user.artistId || userId;
+  const rows = db
+    .prepare(
       `SELECT * FROM conversations
-       WHERE artist_id = $1 OR artist_id = $2 OR promoter_id = $3
-       ORDER BY last_message_at DESC`,
-      [userId, artistKey, userId]
-    );
-    res.json(await Promise.all(rows.map((r) => mapConversation(r, userId))));
-  } catch (err) {
-    next(err);
-  }
+       WHERE artist_id = ? OR artist_id = ? OR promoter_id = ?
+       ORDER BY last_message_at DESC`
+    )
+    .all(userId, artistKey, userId);
+  res.json(await Promise.all(rows.map((r) => mapConversation(r, userId))));
 });
 
-router.get("/conversations/:id/messages", requireAuth, async (req, res, next) => {
-  try {
-    const conv = await one("SELECT * FROM conversations WHERE id = $1", [
-      req.params.id,
-    ]);
-    if (!conv) return res.status(404).json({ message: "Conversation not found" });
-    if (!canAccessConversation(req.user, conv) && !req.user.ephemeral) {
-      return res.status(403).json({ message: "Not your conversation" });
-    }
-    await query(
-      `UPDATE messages SET read_flag = TRUE
-       WHERE conversation_id = $1 AND sender_id != $2`,
-      [req.params.id, req.user.id]
-    );
-    const rows = await many(
-      `SELECT * FROM messages WHERE conversation_id = $1 ORDER BY created_at ASC`,
-      [req.params.id]
-    );
-    res.json(rows.map(mapMessage));
-  } catch (err) {
-    next(err);
+// GET /api/messages/conversations/:id/messages
+router.get("/conversations/:id/messages", requireAuth, async (req, res) => {
+  const userId = req.user.id;
+  const conv = db
+    .prepare("SELECT * FROM conversations WHERE id = ?")
+    .get(req.params.id);
+  if (!conv) return res.status(404).json({ message: "Conversation not found" });
+  if (!canAccessConversation(req.user, conv) && !req.user.ephemeral) {
+    return res.status(403).json({ message: "Not your conversation" });
   }
+
+  // Mark messages from the other party as read
+  await db.prepare(
+    `UPDATE messages SET read_flag = 1
+     WHERE conversation_id = ? AND sender_id != ?`
+  ).run(req.params.id, userId);
+
+  const rows = db
+    .prepare(
+      `SELECT * FROM messages WHERE conversation_id = ?
+       ORDER BY created_at ASC`
+    )
+    .all(req.params.id);
+
+  res.json(rows.map(mapMessage));
 });
 
-router.post(
-  "/conversations/:id/messages",
-  requireAuth,
-  rateLimit({ windowMs: 60_000, max: 30, key: "msg" }),
-  async (req, res, next) => {
-    try {
-      const body = sanitizeString(req.body?.body, 4000);
-      const { attachment } = req.body || {};
-      const conv = await one("SELECT * FROM conversations WHERE id = $1", [
-        req.params.id,
-      ]);
-      if (!conv) return res.status(404).json({ message: "Conversation not found" });
-      if (!canAccessConversation(req.user, conv) && !req.user.ephemeral) {
-        return res.status(403).json({ message: "Not your conversation" });
-      }
-      if (!body.trim() && !attachment) {
-        return res.status(400).json({ message: "body or attachment required" });
-      }
-      const id = uuidv4();
-      const now = new Date().toISOString();
-      await query(
-        `INSERT INTO messages (
-          id, conversation_id, sender_id, sender_name, body, created_at, read_flag, attachment_json
-        ) VALUES ($1,$2,$3,$4,$5,$6,FALSE,$7)`,
-        [
-          id,
-          req.params.id,
-          req.user.id,
-          req.user.name || "User",
-          body || (attachment ? `Sent ${attachment.name}` : ""),
-          now,
-          attachment ? JSON.stringify(attachment) : null,
-        ]
-      );
-      await query(
-        `UPDATE conversations SET last_message_at = $1, last_message_preview = $2 WHERE id = $3`,
-        [now, body.slice(0, 80) || "Attachment", req.params.id]
-      );
-      const row = await one("SELECT * FROM messages WHERE id = $1", [id]);
-      res.status(201).json(mapMessage(row));
-    } catch (err) {
-      next(err);
-    }
+// POST /api/messages/conversations/:id/messages
+router.post("/conversations/:id/messages", requireAuth, rateLimit({ windowMs: 60_000, max: 30, key: "msg" }), async (req, res) => {
+  const userId = req.user.id;
+  const conv = db
+    .prepare("SELECT * FROM conversations WHERE id = ?")
+    .get(req.params.id);
+  if (!conv) return res.status(404).json({ message: "Conversation not found" });
+  if (!canAccessConversation(req.user, conv) && !req.user.ephemeral) {
+    return res.status(403).json({ message: "Not your conversation" });
   }
-);
 
-router.post("/conversations", requireAuth, async (req, res, next) => {
-  try {
-    const { bookingId, artistId, artistName, promoterId, promoterName, initialMessage } =
-      req.body || {};
-    if (!bookingId || !artistId || !promoterId) {
+  const { attachment, senderName } = req.body;
+  const body = sanitizeString(req.body?.body, 4000);
+  if ((!body || !body.trim()) && !attachment) {
+    return res.status(400).json({ message: "body or attachment required" });
+  }
+
+  // Cap attachment JSON size (~1.5MB base64 is large for SQLite demo)
+  let attachmentJson = null;
+  if (attachment) {
+    const raw = JSON.stringify(attachment);
+    if (raw.length > 2_000_000) {
       return res.status(400).json({
-        message: "bookingId, artistId and promoterId are required",
+        message: "Attachment too large (max ~1.5MB)",
       });
     }
-    const existing = await one(
-      "SELECT * FROM conversations WHERE booking_id = $1",
-      [bookingId]
-    );
-    if (existing) {
-      return res.json(await mapConversation(existing, req.user.id));
-    }
-    const id = uuidv4();
-    const now = new Date().toISOString();
-    await query(
-      `INSERT INTO conversations (
-        id, booking_id, artist_id, artist_name, promoter_id, promoter_name,
-        last_message_at, last_message_preview, created_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-      [
-        id,
-        bookingId,
-        artistId,
-        artistName || "Artist",
-        promoterId,
-        promoterName || "Promoter",
-        now,
-        initialMessage ? String(initialMessage).slice(0, 80) : "Booking chat",
-        now,
-      ]
-    );
-    if (initialMessage) {
-      await query(
-        `INSERT INTO messages (
-          id, conversation_id, sender_id, sender_name, body, created_at, read_flag
-        ) VALUES ($1,$2,$3,$4,$5,$6,FALSE)`,
-        [
-          uuidv4(),
-          id,
-          promoterId,
-          promoterName || "Promoter",
-          String(initialMessage),
-          now,
-        ]
-      );
-    }
-    const row = await one("SELECT * FROM conversations WHERE id = $1", [id]);
-    res.status(201).json(await mapConversation(row, req.user.id));
-  } catch (err) {
-    next(err);
+    attachmentJson = raw;
   }
+
+  const id = uuidv4();
+  const createdAt = new Date().toISOString();
+  const preview = attachment
+    ? `📎 ${attachment.name}${body ? ` — ${String(body).slice(0, 60)}` : ""}`
+    : String(body).slice(0, 80);
+
+  await db.prepare(
+    `INSERT INTO messages (
+      id, conversation_id, sender_id, sender_name, body, created_at, read_flag, attachment_json
+    ) VALUES (?, ?, ?, ?, ?, ?, 0, ?)`
+  ).run(
+    id,
+    req.params.id,
+    userId,
+    senderName || req.user.name || "User",
+    body ? String(body) : attachment ? `Sent ${attachment.name}` : "",
+    createdAt,
+    attachmentJson
+  );
+
+  await db.prepare(
+    `UPDATE conversations SET last_message_at = ?, last_message_preview = ? WHERE id = ?`
+  ).run(createdAt, preview, req.params.id);
+
+  const row = await db.prepare("SELECT * FROM messages WHERE id = ?").get(id);
+  res.status(201).json(mapMessage(row));
 });
 
-router.get("/unread-count", requireAuth, async (req, res, next) => {
-  try {
-    const userId = req.user.id;
-    const artistKey = req.user.artistId || userId;
-    const convs = await many(
-      `SELECT id FROM conversations
-       WHERE artist_id = $1 OR artist_id = $2 OR promoter_id = $3`,
-      [userId, artistKey, userId]
-    );
-    if (!convs.length) return res.json({ count: 0 });
-    const row = await one(
-      `SELECT COUNT(*)::int AS n FROM messages
-       WHERE conversation_id = ANY($1::text[])
-         AND sender_id != $2 AND read_flag = FALSE`,
-      [convs.map((c) => c.id), userId]
-    );
-    res.json({ count: Number(row?.n || 0) });
-  } catch (err) {
-    next(err);
+// POST /api/messages/conversations — ensure conversation for a booking
+router.post("/conversations", requireAuth, async (req, res) => {
+  const {
+    bookingId,
+    artistId,
+    artistName,
+    promoterId,
+    promoterName,
+    initialMessage,
+  } = req.body;
+
+  if (!bookingId || !artistId || !promoterId) {
+    return res.status(400).json({
+      message: "bookingId, artistId and promoterId are required",
+    });
   }
+
+  const existing = db
+    .prepare("SELECT * FROM conversations WHERE booking_id = ?")
+    .get(bookingId);
+  if (existing) {
+    return res.json(mapConversation(existing, req.user.id));
+  }
+
+  const id = uuidv4();
+  const now = new Date().toISOString();
+  await db.prepare(
+    `INSERT INTO conversations (
+      id, booking_id, artist_id, artist_name, promoter_id, promoter_name,
+      last_message_at, last_message_preview, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    id,
+    bookingId,
+    artistId,
+    artistName || "Artist",
+    promoterId,
+    promoterName || "Promoter",
+    now,
+    initialMessage ? String(initialMessage).slice(0, 80) : "Booking chat",
+    now
+  );
+
+  if (initialMessage) {
+    const mid = uuidv4();
+    await db.prepare(
+      `INSERT INTO messages (
+        id, conversation_id, sender_id, sender_name, body, created_at, read_flag
+      ) VALUES (?, ?, ?, ?, ?, ?, 0)`
+    ).run(
+      mid,
+      id,
+      promoterId,
+      promoterName || "Promoter",
+      String(initialMessage),
+      now
+    );
+  }
+
+  const row = await db.prepare("SELECT * FROM conversations WHERE id = ?").get(id);
+  res.status(201).json(mapConversation(row, req.user.id));
+});
+
+// GET /api/messages/unread-count
+router.get("/unread-count", requireAuth, (req, res) => {
+  const userId = req.user.id;
+  const artistKey = req.user.artistId || userId;
+  const convIds = db
+    .prepare(
+      `SELECT id FROM conversations
+       WHERE artist_id = ? OR artist_id = ? OR promoter_id = ?`
+    )
+    .all(userId, artistKey, userId)
+    .map((r) => r.id);
+
+  if (convIds.length === 0) return res.json({ count: 0 });
+
+  const placeholders = convIds.map(() => "?").join(",");
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM messages
+       WHERE conversation_id IN (${placeholders})
+         AND sender_id != ?
+         AND read_flag = 0`
+    )
+    .get(...convIds, userId);
+
+  res.json({ count: Number(row?.n || 0) });
 });
 
 export default router;

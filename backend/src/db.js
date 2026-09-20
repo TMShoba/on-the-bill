@@ -4,74 +4,140 @@ import "dotenv/config";
 const { Pool } = pg;
 
 /**
- * Supabase / any Postgres.
- * Project Settings → Database → Connection string (URI)
- * Prefer the "Transaction" pooler URI on port 6543 for serverless,
- * or direct 5432 for a long-running Node API on Railway/local.
+ * Supabase Postgres connection.
+ * Prefer Session pooler (port 5432) for Node servers, or Transaction pooler (6543).
+ * Set DATABASE_URL in .env — never commit real passwords.
  */
 const connectionString =
-  process.env.DATABASE_URL || process.env.POSTGRES_URL || "";
+  process.env.DATABASE_URL ||
+  process.env.SUPABASE_DB_URL ||
+  "";
 
 if (!connectionString) {
   console.warn(
-    "[db] DATABASE_URL is not set. Add your Supabase connection string to .env"
+    "⚠️  DATABASE_URL is not set. Set it to your Supabase Postgres URI."
   );
 }
 
-const useSsl =
-  process.env.DATABASE_SSL === "false"
-    ? false
-    : process.env.DATABASE_SSL === "true" ||
-      /supabase\.co|neon\.tech|railway\.app/i.test(connectionString) ||
-      process.env.NODE_ENV === "production";
-
+// Supabase pooler + serverless-friendly settings
 export const pool = new Pool({
-  connectionString: connectionString || undefined,
-  ssl: useSsl ? { rejectUnauthorized: false } : undefined,
-  max: Number(process.env.DB_POOL_MAX || 10),
+  connectionString,
+  ssl: connectionString.includes("localhost")
+    ? false
+    : { rejectUnauthorized: false },
+  max: Number(process.env.PG_POOL_MAX || 10),
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 15_000,
 });
 
 pool.on("error", (err) => {
-  console.error("[db] Unexpected pool error", err.message);
+  console.error("Unexpected Postgres pool error:", err.message);
 });
 
-export async function query(text, params = []) {
-  return pool.query(text, params);
+/** Convert ? placeholders to $1, $2, ... */
+function toPg(sql) {
+  let i = 0;
+  return sql.replace(/\?/g, () => `$${++i}`);
 }
 
-export async function one(text, params = []) {
-  const { rows } = await pool.query(text, params);
-  return rows[0] || null;
+/**
+ * Expand named @param objects (better-sqlite3 style) into ordered arrays.
+ * Only used when a single object argument is passed.
+ */
+function expandNamed(sql, paramsObj) {
+  const names = [];
+  const pgSql = sql.replace(/@([a-zA-Z_][a-zA-Z0-9_]*)/g, (_, name) => {
+    names.push(name);
+    return `$${names.length}`;
+  });
+  const values = names.map((n) => paramsObj[n]);
+  return { sql: pgSql, values };
 }
 
-export async function many(text, params = []) {
-  const { rows } = await pool.query(text, params);
-  return rows;
+function normalizeArgs(sql, args) {
+  if (
+    args.length === 1 &&
+    args[0] &&
+    typeof args[0] === "object" &&
+    !Array.isArray(args[0]) &&
+    sql.includes("@")
+  ) {
+    return expandNamed(sql, args[0]);
+  }
+  return { sql: toPg(sql), values: args };
 }
 
+export async function query(sql, ...args) {
+  const { sql: text, values } = normalizeArgs(sql, args);
+  return pool.query(text, values);
+}
+
+export async function get(sql, ...args) {
+  const res = await query(sql, ...args);
+  return res.rows[0] || null;
+}
+
+export async function all(sql, ...args) {
+  const res = await query(sql, ...args);
+  return res.rows;
+}
+
+export async function run(sql, ...args) {
+  const res = await query(sql, ...args);
+  return {
+    changes: res.rowCount ?? 0,
+    rowCount: res.rowCount ?? 0,
+  };
+}
+
+/** better-sqlite3 compatible prepare() returning async get/all/run */
+export function prepare(sql) {
+  return {
+    get: (...args) => get(sql, ...args),
+    all: (...args) => all(sql, ...args),
+    run: (...args) => run(sql, ...args),
+  };
+}
+
+const db = {
+  prepare,
+  get,
+  all,
+  run,
+  query,
+  pool,
+  async exec(sql) {
+    await pool.query(sql);
+  },
+};
+
+export default db;
+
+/**
+ * Create schema if missing (idempotent).
+ * Call once at startup before seed.
+ */
 export async function migrate() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS artists (
       id TEXT PRIMARY KEY,
       stage_name TEXT NOT NULL,
-      genre TEXT NOT NULL DEFAULT '',
-      location TEXT NOT NULL DEFAULT '',
-      rate INTEGER NOT NULL DEFAULT 0,
-      image_url TEXT NOT NULL DEFAULT '',
-      bio TEXT NOT NULL DEFAULT ''
+      genre TEXT NOT NULL,
+      location TEXT NOT NULL,
+      rate INTEGER NOT NULL,
+      image_url TEXT NOT NULL,
+      bio TEXT DEFAULT ''
     );
 
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
-      email TEXT NOT NULL,
+      email TEXT NOT NULL UNIQUE,
       password TEXT NOT NULL,
       role TEXT NOT NULL CHECK (role IN ('client', 'artist', 'promoter')),
       artist_id TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
-    CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_idx
-      ON users (LOWER(email));
 
     CREATE TABLE IF NOT EXISTS bookings (
       id TEXT PRIMARY KEY,
@@ -80,58 +146,52 @@ export async function migrate() {
       client_name TEXT NOT NULL,
       client_email TEXT NOT NULL,
       event_date TEXT NOT NULL,
-      venue TEXT NOT NULL DEFAULT '',
-      message TEXT NOT NULL DEFAULT '',
+      venue TEXT DEFAULT '',
+      message TEXT DEFAULT '',
       status TEXT NOT NULL DEFAULT 'pending'
         CHECK (status IN ('pending', 'confirmed', 'declined', 'paid')),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      address TEXT NOT NULL DEFAULT '',
-      city TEXT NOT NULL DEFAULT '',
-      time TEXT NOT NULL DEFAULT '',
+      address TEXT DEFAULT '',
+      city TEXT DEFAULT '',
+      time TEXT DEFAULT '',
       fee INTEGER,
-      promoter_name TEXT NOT NULL DEFAULT '',
+      promoter_name TEXT DEFAULT '',
       promoter_id TEXT,
-      notes TEXT NOT NULL DEFAULT '',
-      reminder_opt_in BOOLEAN NOT NULL DEFAULT FALSE,
-      payment_status TEXT NOT NULL DEFAULT 'unpaid'
+      notes TEXT DEFAULT '',
+      reminder_opt_in INTEGER DEFAULT 0,
+      payment_status TEXT DEFAULT 'unpaid'
         CHECK (payment_status IN ('unpaid', 'deposit', 'paid', 'disputed')),
       paid_at TIMESTAMPTZ,
       dispute_reason TEXT,
       disputed_at TIMESTAMPTZ
     );
-    CREATE INDEX IF NOT EXISTS bookings_artist_idx ON bookings(artist_id);
-    CREATE INDEX IF NOT EXISTS bookings_promoter_idx ON bookings(promoter_id);
-    CREATE INDEX IF NOT EXISTS bookings_client_email_idx ON bookings(LOWER(client_email));
 
     CREATE TABLE IF NOT EXISTS conversations (
       id TEXT PRIMARY KEY,
-      booking_id TEXT NOT NULL,
+      booking_id TEXT,
       artist_id TEXT NOT NULL,
-      artist_name TEXT NOT NULL,
+      artist_name TEXT DEFAULT '',
       promoter_id TEXT NOT NULL,
-      promoter_name TEXT NOT NULL,
-      last_message_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      last_message_preview TEXT NOT NULL DEFAULT '',
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      promoter_name TEXT DEFAULT '',
+      last_message_at TIMESTAMPTZ,
+      last_message_preview TEXT DEFAULT ''
     );
-    CREATE UNIQUE INDEX IF NOT EXISTS conversations_booking_idx
-      ON conversations(booking_id);
-    CREATE INDEX IF NOT EXISTS conversations_artist_idx ON conversations(artist_id);
-    CREATE INDEX IF NOT EXISTS conversations_promoter_idx ON conversations(promoter_id);
 
     CREATE TABLE IF NOT EXISTS messages (
       id TEXT PRIMARY KEY,
       conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
       sender_id TEXT NOT NULL,
-      sender_name TEXT NOT NULL,
-      body TEXT NOT NULL DEFAULT '',
+      sender_name TEXT DEFAULT '',
+      body TEXT DEFAULT '',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      read_flag BOOLEAN NOT NULL DEFAULT FALSE,
+      read_flag INTEGER DEFAULT 0,
       attachment_json TEXT
     );
-    CREATE INDEX IF NOT EXISTS messages_conv_idx ON messages(conversation_id);
-  `);
-  console.log("[db] Schema ready (PostgreSQL / Supabase)");
-}
 
-export default { pool, query, one, many, migrate };
+    CREATE INDEX IF NOT EXISTS idx_bookings_artist ON bookings(artist_id);
+    CREATE INDEX IF NOT EXISTS idx_bookings_promoter ON bookings(promoter_id);
+    CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique ON users (email);
+    CREATE INDEX IF NOT EXISTS idx_users_email_lower ON users (LOWER(email));
+  `);
+}

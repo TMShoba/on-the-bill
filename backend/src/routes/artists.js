@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { many, one } from "../db.js";
+import db from "../db.js";
 
 const router = Router();
 
@@ -15,45 +15,60 @@ function mapArtist(row) {
   };
 }
 
-router.get("/", async (req, res, next) => {
+// GET /api/artists
+router.get("/", async (req, res) => {
   try {
     const { genre, location, q } = req.query;
-    const clauses = [];
-    const params = [];
-    let i = 1;
+
+    let sql = "SELECT * FROM artists WHERE 1=1";
+    const params = {};
+
     if (genre) {
-      clauses.push(`LOWER(genre) = LOWER($${i++})`);
-      params.push(String(genre));
+      sql += " AND LOWER(genre) = LOWER(@genre)";
+      params.genre = String(genre);
     }
+
     if (location) {
-      clauses.push(`LOWER(location) LIKE LOWER($${i++})`);
-      params.push(`%${String(location)}%`);
+      sql += " AND LOWER(location) LIKE LOWER(@location)";
+      params.location = `%${String(location)}%`;
     }
+
     if (q) {
-      clauses.push(
-        `(LOWER(stage_name) LIKE LOWER($${i}) OR LOWER(genre) LIKE LOWER($${i}) OR LOWER(location) LIKE LOWER($${i}))`
-      );
-      params.push(`%${String(q)}%`);
-      i++;
+      sql += ` AND (
+      LOWER(stage_name) LIKE LOWER(@q)
+      OR LOWER(genre) LIKE LOWER(@q)
+      OR LOWER(location) LIKE LOWER(@q)
+    )`;
+      params.q = `%${String(q)}%`;
     }
-    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-    const rows = await many(
-      `SELECT * FROM artists ${where} ORDER BY stage_name ASC`,
-      params
-    );
+
+    sql += " ORDER BY stage_name ASC";
+
+    const rows = Object.keys(params).length
+      ? await db.prepare(sql).all(params)
+      : await db.prepare(sql).all();
     res.json(rows.map(mapArtist));
-  } catch (err) {
-    next(err);
+  } catch (e) {
+    console.error("artists list", e);
+    res.status(500).json({ message: "Failed to load artists" });
   }
 });
 
-router.get("/:id", async (req, res, next) => {
+// GET /api/artists/:id
+router.get("/:id", async (req, res) => {
   try {
-    const row = await one("SELECT * FROM artists WHERE id = $1", [req.params.id]);
-    if (!row) return res.status(404).json({ message: "Artist not found" });
+    const row = await db
+      .prepare("SELECT * FROM artists WHERE id = ?")
+      .get(req.params.id);
+
+    if (!row) {
+      return res.status(404).json({ message: "Artist not found" });
+    }
+
     res.json(mapArtist(row));
-  } catch (err) {
-    next(err);
+  } catch (e) {
+    console.error("artist detail", e);
+    res.status(500).json({ message: "Failed to load artist" });
   }
 });
 
