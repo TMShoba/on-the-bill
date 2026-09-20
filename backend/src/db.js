@@ -79,7 +79,7 @@ export async function get(sql, ...args) {
 
 export async function all(sql, ...args) {
   const res = await query(sql, ...args);
-  return res.rows;
+  return Array.isArray(res.rows) ? res.rows : [];
 }
 
 export async function run(sql, ...args) {

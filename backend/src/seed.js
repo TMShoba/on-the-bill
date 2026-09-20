@@ -53,12 +53,11 @@ const artists = [
   { id: "37", stage_name: "Scorpion Kings", genre: "Amapiano", location: "Johannesburg", rate: 60000, image_url: "/artists/scorpion-kings.webp", bio: "The legendary Scorpion Kings. A premium booking that consistently sells out venues and festivals." },
   { id: "38", stage_name: "Sjava", genre: "Afro Soul", location: "KwaZulu-Natal", rate: 25000, image_url: "/artists/sjava.webp", bio: "Award-winning singer and songwriter blending Afro Soul, Hip Hop, and traditional influences." },
   { id: "39", stage_name: "Zakwe", genre: "Hip Hop", location: "Durban", rate: 15000, image_url: "/artists/zakwe.webp", bio: "Respected lyricist and performer known for authentic storytelling and energetic live shows." },
-  { id: "40", stage_name: "uMsebenzi Wethu", genre: "Amapiano", location: "Johannesburg", rate: 18000, image_url: "/artists/umsebenzi-wethu.webp", bio: "Popular Amapiano duo known for dancefloor hits and a rapidly growing national following." },
+  { id: "40", stage_name: "AmaRoto", genre: "Amapiano", location: "Johannesburg", rate: 18000, image_url: "/artists/umsebenzi-wethu.webp", bio: "Popular Amapiano duo known for dancefloor hits and a rapidly growing national following." },
   { id: "41", stage_name: "LeeMcKrazy", genre: "Amapiano", location: "Johannesburg", rate: 16000, image_url: "/artists/leemckrazy.webp", bio: "Viral hitmaker and performer with a unique vocal style that dominates TikTok and club playlists." },
-  { id: "42", stage_name: "Khanyisa", genre: "Amapiano", location: "Johannesburg", rate: 14000, image_url: "/artists/khanyisa.webp", bio: "Dynamic vocalist behind several Amapiano chart successes and high-energy live performances." },
-  { id: "43", stage_name: "Logo Ricky", genre: "Amapiano", location: "Johannesburg", rate: 12000, image_url: "/artists/logo-ricky.webp", bio: "Producer and performer making waves with street anthems and energetic crowd engagement." },
-  { id: "44", stage_name: "DJ Stokie", genre: "Amapiano", location: "Johannesburg", rate: 18000, image_url: "/artists/dj-stokie.webp", bio: "Veteran Amapiano DJ known for soulful sets and hit collaborations across the genre." },
-  { id: "45", stage_name: "Pabi Cooper", genre: "Amapiano", location: "Pretoria", rate: 18000, image_url: "/artists/pabi-cooper.webp", bio: "Singer, dancer, and performer with immense youth appeal and several chart-topping releases." },
+  { id: "42", stage_name: "Ricky Lenyora", genre: "Amapiano", location: "Johannesburg", rate: 12000, image_url: "/artists/logo-ricky.jpg", bio: "Producer and performer making waves with street anthems and energetic crowd engagement." },
+  { id: "43", stage_name: "DJ Stokie", genre: "Amapiano", location: "Johannesburg", rate: 18000, image_url: "/artists/dj-stokie.webp", bio: "Veteran Amapiano DJ known for soulful sets and hit collaborations across the genre." },
+  { id: "44", stage_name: "Pabi Cooper", genre: "Amapiano", location: "Pretoria", rate: 18000, image_url: "/artists/pabi-cooper.webp", bio: "Singer, dancer, and performer with immense youth appeal and several chart-topping releases." },
 ];
 
 const DEMO_ARTIST_USER_ID = "demo-artist-user-001";
