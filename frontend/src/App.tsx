@@ -14,10 +14,12 @@ import Cancellation from "./Pages/legal/Cancellation";
 import { AuthProvider } from "./context/AuthContext";
 import MobileBottomNav from "./components/MobileBottomNav";
 import FloatingMessagesButton from "./components/FloatingMessagesButton";
+import AppBootLoader from "./components/loading/AppBootLoader";
 
 function App() {
   return (
     <AuthProvider>
+      <AppBootLoader>
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Home />} />
@@ -37,6 +39,7 @@ function App() {
         <MobileBottomNav />
         <FloatingMessagesButton />
       </BrowserRouter>
+      </AppBootLoader>
     </AuthProvider>
   );
 }
