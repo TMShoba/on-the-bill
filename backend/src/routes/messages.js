@@ -130,9 +130,14 @@ router.post(
         return res.status(403).json({ message: "Not your conversation" });
       }
 
-      const body = sanitizeString(req.body?.body || req.body?.message || "", 4000);
-      if (!body) {
+      let body = sanitizeString(req.body?.body || req.body?.message || "", 4000);
+      const hasAttachment = Boolean(req.body?.attachment);
+      if (!body && !hasAttachment) {
         return res.status(400).json({ message: "Message body is required" });
+      }
+      if (!body && hasAttachment) {
+        const name = sanitizeString(req.body.attachment?.name || "file", 120);
+        body = `Sent ${name}`;
       }
 
       const id = uuidv4();
@@ -144,7 +149,14 @@ router.post(
       let attachmentJson = null;
       if (req.body?.attachment) {
         try {
-          attachmentJson = JSON.stringify(req.body.attachment).slice(0, 4000);
+          const att = { ...req.body.attachment };
+          // Keep message usable even if dataUrl is huge (drop base64, keep meta)
+          const raw = JSON.stringify(att);
+          if (raw.length > 12000 && att.dataUrl) {
+            delete att.dataUrl;
+            att.omitted = true;
+          }
+          attachmentJson = JSON.stringify(att).slice(0, 20000);
         } catch {
           attachmentJson = null;
         }
