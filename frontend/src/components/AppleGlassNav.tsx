@@ -17,16 +17,13 @@ type Props = {
 };
 
 /**
- * Apple-style glassmorphism pill nav — frosted glass, spring active pill.
- * Active tab is driven by the current route (react-router).
+ * Apple-style glassmorphism pill nav — light frosted glass.
  */
 export default function AppleGlassNav({ items, className }: Props) {
   const location = useLocation();
 
   function isActive(item: GlassNavItem) {
-    if (item.end) {
-      return location.pathname === item.to;
-    }
+    if (item.end) return location.pathname === item.to;
     return (
       location.pathname === item.to ||
       location.pathname.startsWith(item.to + "/")
@@ -36,7 +33,7 @@ export default function AppleGlassNav({ items, className }: Props) {
   return (
     <nav
       className={cn(
-        "flex items-center gap-1 rounded-full border border-white/40 bg-white/25 p-1.5 shadow-lg shadow-black/5 ring-1 ring-black/5 backdrop-blur-xl",
+        "flex items-center gap-1 rounded-full border border-white/60 bg-white/50 p-1.5 shadow-md shadow-black/5 ring-1 ring-black/5 backdrop-blur-xl",
         className
       )}
       aria-label="Primary"
@@ -50,13 +47,13 @@ export default function AppleGlassNav({ items, className }: Props) {
             end={item.end}
             className={cn(
               "relative px-3.5 py-1.5 text-sm font-medium transition-colors duration-300",
-              active ? "text-slate-900" : "text-slate-600 hover:text-slate-900"
+              active ? "text-slate-800" : "text-slate-500 hover:text-slate-700"
             )}
           >
             {active && (
               <motion.div
                 layoutId="lineup-glass-active"
-                className="absolute inset-0 rounded-full bg-white/90 shadow-sm backdrop-blur-md ring-1 ring-emerald-500/20"
+                className="absolute inset-0 rounded-full bg-white shadow-sm ring-1 ring-emerald-400/25"
                 transition={{ type: "spring", bounce: 0.28, duration: 0.55 }}
               />
             )}

@@ -32,7 +32,7 @@ export default function NavBar() {
   }
 
   return (
-    <header className="sticky top-0 z-50 border-b border-white/30 bg-white/60 shadow-sm shadow-black/5 backdrop-blur-xl">
+    <header className="sticky top-0 z-50 border-b border-white/50 bg-white/75 shadow-sm shadow-black/5 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
         <BrandLogo to="/" variant="dark" size="md" />
 

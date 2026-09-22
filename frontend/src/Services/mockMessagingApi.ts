@@ -204,6 +204,20 @@ export const mockMessagingApi = {
         body: input.body,
         attachment: input.attachment,
       });
+      // Keep a local copy so UI/refetch still works if API blips
+      try {
+        const msgs = read<Message[]>(MSG_KEY, []);
+        if (!msgs.some((m) => m.id === msg.id)) {
+          msgs.push({
+            ...msg,
+            senderId: msg.senderId || input.senderId,
+            read: true,
+          });
+          write(MSG_KEY, msgs);
+        }
+      } catch {
+        /* ignore */
+      }
       // Local notification for the other party when we can resolve them
       try {
         const convs = await listConversationsApi();

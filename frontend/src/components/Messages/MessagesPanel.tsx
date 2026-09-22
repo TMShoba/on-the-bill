@@ -49,18 +49,63 @@ export default function MessagesPanel({ variant = "embedded" }: Props) {
       mockMessagingApi.sendMessage({
         conversationId: activeId!,
         senderId: user!.id,
-        senderName: user!.name,
+        senderName: user!.name || "You",
         body: body.trim(),
         attachment: pendingFile || undefined,
       }),
-    onSuccess: () => {
+    onMutate: async () => {
+      const text = body.trim();
+      const att = pendingFile;
+      // Clear input immediately for snappy UX
       setBody("");
       setPendingFile(null);
       setFileError("");
       if (fileRef.current) fileRef.current.value = "";
-      qc.invalidateQueries({ queryKey: ["messages", activeId] });
+
+      await qc.cancelQueries({ queryKey: ["messages", activeId] });
+      const prev = qc.getQueryData<unknown[]>(["messages", activeId]);
+
+      // Optimistic bubble so the message always appears
+      const optimistic = {
+        id: `temp-${Date.now()}`,
+        conversationId: activeId!,
+        senderId: user!.id,
+        senderName: user!.name || "You",
+        body: text || (att ? `Sent ${att.name}` : ""),
+        createdAt: new Date().toISOString(),
+        read: true,
+        attachment: att || undefined,
+      };
+      qc.setQueryData(["messages", activeId], (old: unknown) => {
+        const list = Array.isArray(old) ? old : [];
+        return [...list, optimistic];
+      });
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) {
+        qc.setQueryData(["messages", activeId], ctx.prev);
+      }
+      setFileError("Could not send — try again");
+    },
+    onSuccess: (msg) => {
+      // Replace optimistic temp message with server message
+      qc.setQueryData(["messages", activeId], (old: unknown) => {
+        const list = Array.isArray(old) ? [...old] : [];
+        const withoutTemp = list.filter(
+          (m: { id?: string }) => !String(m?.id || "").startsWith("temp-")
+        );
+        // Avoid duplicates if refetch already added it
+        if (withoutTemp.some((m: { id?: string }) => m.id === msg.id)) {
+          return withoutTemp;
+        }
+        return [...withoutTemp, msg];
+      });
       qc.invalidateQueries({ queryKey: ["conversations", user?.id] });
       qc.invalidateQueries({ queryKey: ["unread", user?.id] });
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["messages", activeId] });
     },
   });
 
