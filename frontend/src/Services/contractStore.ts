@@ -80,3 +80,14 @@ export function ensureContract(gig: Booking): BookingContract {
   localStorage.setItem(KEY_PREFIX + gig.id, JSON.stringify(contract));
   return contract;
 }
+
+
+export function downloadContract(contract: BookingContract, filename?: string) {
+  const blob = new Blob([contract.text], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename || `lineup-contract-${contract.bookingId.slice(0, 8)}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
+}

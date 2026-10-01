@@ -254,6 +254,15 @@ export default function ArtistDetails() {
               </div>
             </div>
 
+            {/* International promoter note */}
+            <div className="mb-4 rounded-2xl border border-emerald-100 bg-emerald-50/80 p-4 text-sm text-emerald-950">
+              <p className="font-semibold">Booking from outside South Africa?</p>
+              <p className="mt-1 text-emerald-900/80">
+                You do not need a manager's WhatsApp. Request this date on the shared calendar,
+                message in-app, and confirm. Artists subscribe to be listed. Promoters pay a small
+                platform percentage only when the booking is confirmed.
+              </p>
+            </div>
             {/* Lighter public-facing availability calendar */}
             <div className="mt-6">
               <h2 className="mb-2 text-lg font-bold text-slate-900">

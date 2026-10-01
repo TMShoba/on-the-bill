@@ -6,6 +6,7 @@
  */
 
 /** Platform takes 8% of the performance fee, min R25, max R2 500 */
+// Promoters pay this percentage on a confirmed booking. Artists pay a subscription separately.
 export const PLATFORM_FEE_RATE = 0.08;
 export const PLATFORM_FEE_MIN = 25;
 export const PLATFORM_FEE_MAX = 2500;

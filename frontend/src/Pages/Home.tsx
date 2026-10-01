@@ -80,9 +80,7 @@ export default function Home() {
             </span>
           </h1>
           <p className="mt-6 max-w-xl text-lg leading-relaxed text-slate-300 sm:text-xl">
-            The LineUp connects promoters with verified SA talent — from Amapiano
-            headliners to Hip Hop heavyweights. Discover, request, and confirm
-            without the WhatsApp chaos.
+            The LineUp is the direct line between South African artists and promoters — including international bookers who struggle to reach managers. Discover verified talent, request a date, and confirm on a shared calendar without the WhatsApp maze.
           </p>
 
           <div className="mt-10 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -98,6 +96,20 @@ export default function Home() {
             >
               I&apos;m an artist / promoter
             </Link>
+          </div>
+
+
+          <div className="mt-10 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur">
+              <p className="text-xs font-bold uppercase tracking-widest text-emerald-300">Artists</p>
+              <p className="mt-1 text-sm font-semibold text-white">Subscription to be listed and receive requests</p>
+              <p className="mt-1 text-xs text-slate-400">Pay to stay on the roster, manage your calendar, and reply to promoters in one inbox.</p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur">
+              <p className="text-xs font-bold uppercase tracking-widest text-emerald-300">Promoters</p>
+              <p className="mt-1 text-sm font-semibold text-white">Free to browse. Small % on a confirmed booking</p>
+              <p className="mt-1 text-xs text-slate-400">International and local promoters pay a platform fee only when a gig is confirmed — not to look.</p>
+            </div>
           </div>
 
           <div className="mt-14 flex flex-wrap gap-8 border-t border-white/10 pt-8 text-sm">

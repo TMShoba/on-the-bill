@@ -1,8 +1,10 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import type { Booking } from "../Types/Artist";
 import { getBankingDetails } from "../Services/artistProfileStore";
-import { getReceiptsForBooking } from "../Services/receiptStore";
+import { downloadReceipt, getReceiptsForBooking } from "../Services/receiptStore";
+import { api } from "../Services/api";
+import { downloadContract, ensureContract, getContract } from "../Services/contractStore";
 
 type Props = {
   gig: Booking | null;
@@ -61,10 +63,31 @@ export default function GigDetailsModal({
   const [termsAgreed, setTermsAgreed] = useState(false);
   const [receiptTick, setReceiptTick] = useState(0);
 
-  const receipts = useMemo(() => {
-    if (!gig) return [];
-    void receiptTick;
-    return getReceiptsForBooking(gig.id);
+  const [receipts, setReceipts] = useState<ReturnType<typeof getReceiptsForBooking>>([]);
+  const [serverContract, setServerContract] = useState<{ bookingId: string; text: string; generatedAt: string } | null>(null);
+
+  useEffect(() => {
+    if (!gig) {
+      setReceipts([]);
+      setServerContract(null);
+      return;
+    }
+    let cancelled = false;
+    api
+      .get(`/documents/${gig.id}`)
+      .then(({ data }) => {
+        if (cancelled) return;
+        setReceipts(Array.isArray(data?.receipts) ? data.receipts : []);
+        setServerContract(data?.contract || null);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setReceipts(getReceiptsForBooking(gig.id));
+        setServerContract(null);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [gig, receiptTick]);
 
   if (!open || !gig) return null;
@@ -181,6 +204,23 @@ export default function GigDetailsModal({
               Payment record for this booking
             </span>
           </div>
+          {(() => {
+            const contract =
+              serverContract ||
+              (gig.status === "confirmed" || gig.status === "paid"
+                ? ensureContract(gig)
+                : getContract(gig.id));
+            if (!contract) return null;
+            return (
+              <button
+                type="button"
+                onClick={() => downloadContract(contract)}
+                className="mt-3 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50"
+              >
+                Download contract
+              </button>
+            );
+          })()}
           {receipts.length === 0 ? (
             <p className="mt-2 text-xs leading-relaxed text-slate-500">
               No receipts yet. When a deposit or full payment is marked paid,
@@ -214,6 +254,13 @@ export default function GigDetailsModal({
                     Platform fee R{r.platformFee.toLocaleString()} · Artist
                     payout R{r.artistPayout.toLocaleString()}
                   </p>
+                  <button
+                    type="button"
+                    onClick={() => downloadReceipt(r)}
+                    className="mt-2 text-[11px] font-semibold text-emerald-700 hover:underline"
+                  >
+                    Download receipt
+                  </button>
                 </li>
               ))}
             </ul>

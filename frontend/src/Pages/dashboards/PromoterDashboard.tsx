@@ -12,6 +12,8 @@ import TrustEducation from "../../components/TrustEducation";
 import { useAuth } from "../../context/AuthContext";
 import type { Booking } from "../../Types/Artist";
 import GigDetailsModal from "../../components/GigDetailsModal";
+import BookingDocuments from "../../components/BookingDocuments";
+import GigCalendar from "../../components/GigCalendar";
 import {
   getFavorites,
   removeFavorite,
@@ -23,6 +25,7 @@ export default function PromoterDashboard() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const [dayGigs, setDayGigs] = useState<Booking[]>([]);
 
   useEffect(() => {
     if (searchParams.get("tab") === "messages") {
@@ -88,7 +91,7 @@ export default function PromoterDashboard() {
             Hey, {user?.name?.split(" ")[0] || "there"} 👋
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            Shortlist, requests & messages
+            Shortlist, shared calendar & messages — built for local and international promoters
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -178,6 +181,45 @@ export default function PromoterDashboard() {
         )}
       </div>
 
+
+      <div className="mb-8">
+        <div className="mb-3">
+          <h2 className="text-lg font-bold text-slate-900">Booking calendar</h2>
+          <p className="text-sm text-slate-500">
+            Same calendar view artists use. Confirmed, pending and declined
+            requests sit on the date of the gig — tap a day or a booking to open it.
+            Useful if you are booking from outside South Africa and need one shared schedule.
+          </p>
+        </div>
+        <GigCalendar
+          gigs={gigs}
+          onSelectDay={(_date, list) => {
+            setDayGigs(list);
+            if (list.length === 1) setSelected(list[0]);
+          }}
+          onSelectGig={(gig) => setSelected(gig)}
+        />
+        {dayGigs.length > 1 && (
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+            <h3 className="mb-2 text-sm font-bold text-slate-900">Bookings on this day</h3>
+            <ul className="space-y-2">
+              {dayGigs.map((g) => (
+                <li key={g.id}>
+                  <button
+                    type="button"
+                    onClick={() => setSelected(g)}
+                    className="w-full rounded-xl border border-slate-100 px-3 py-2 text-left text-sm hover:bg-slate-50"
+                  >
+                    <span className="font-semibold text-slate-900">{g.artistName}</span>
+                    <span className="text-slate-500"> · {g.venue || "Venue TBC"} · {g.status}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+
       <div className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-lg font-bold text-slate-900">
           Your booking requests
@@ -232,6 +274,12 @@ export default function PromoterDashboard() {
       <div className="mb-8">
         <TrustEducation compact />
       </div>
+
+      <BookingDocuments
+        bookings={gigs}
+        role="promoter"
+        onOpenBooking={(b) => setSelected(b)}
+      />
 
       <div id="dashboard-messages" className="scroll-mt-24">
         <MessagesPanel />

@@ -3,6 +3,7 @@ import CountUp from "../../components/animations/CountUp";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import GigCalendar from "../../components/GigCalendar";
 import GigDetailsModal from "../../components/GigDetailsModal";
+import BookingDocuments from "../../components/BookingDocuments";
 import RemindersPanel from "../../components/RemindersPanel";
 import MessagesPanel from "../../components/Messages/MessagesPanel";
 import ArtistPhotoUpload from "../../components/ArtistPhotoUpload";
@@ -272,6 +273,12 @@ export default function ArtistDashboard() {
               </ul>
             </div>
           )}
+
+          <BookingDocuments
+            bookings={mine}
+            role="artist"
+            onOpenBooking={openGig}
+          />
 
           <RemindersPanel gigs={mine} onOpenGig={openGig} />
 
