@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import type { Booking } from "../Types/Artist";
 import { getBankingDetails } from "../Services/artistProfileStore";
