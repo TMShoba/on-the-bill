@@ -11,7 +11,7 @@ import {
 } from "../Services/demoStore";
 import { mockMessagingApi } from "../Services/mockMessagingApi";
 import { resolveArtistImage } from "../utils/imageCdn";
-import PublicAvailabilityCalendar, {
+import {
   confirmedDatesFromGigs,
 } from "../components/PublicAvailabilityCalendar";
 import GigCalendar from "../components/GigCalendar";
