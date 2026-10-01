@@ -188,6 +188,35 @@ export async function migrate() {
       attachment_json TEXT
     );
 
+    
+    CREATE TABLE IF NOT EXISTS booking_contracts (
+      booking_id TEXT PRIMARY KEY REFERENCES bookings(id) ON DELETE CASCADE,
+      text TEXT NOT NULL,
+      generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS receipts (
+      id TEXT PRIMARY KEY,
+      booking_id TEXT NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+      artist_id TEXT,
+      artist_name TEXT DEFAULT '',
+      promoter_name TEXT DEFAULT '',
+      promoter_email TEXT DEFAULT '',
+      promoter_id TEXT,
+      amount INTEGER NOT NULL DEFAULT 0,
+      platform_fee INTEGER NOT NULL DEFAULT 0,
+      artist_payout INTEGER NOT NULL DEFAULT 0,
+      kind TEXT NOT NULL CHECK (kind IN ('deposit', 'full')),
+      method TEXT NOT NULL DEFAULT 'manual',
+      status TEXT NOT NULL DEFAULT 'paid' CHECK (status IN ('pending', 'paid', 'refunded')),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      paid_at TIMESTAMPTZ
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_receipts_booking ON receipts(booking_id);
+    CREATE INDEX IF NOT EXISTS idx_receipts_artist ON receipts(artist_id);
+    CREATE INDEX IF NOT EXISTS idx_receipts_promoter ON receipts(promoter_id);
+
     CREATE INDEX IF NOT EXISTS idx_bookings_artist ON bookings(artist_id);
     CREATE INDEX IF NOT EXISTS idx_bookings_promoter ON bookings(promoter_id);
     CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);

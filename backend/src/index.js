@@ -4,6 +4,7 @@ import cors from "cors";
 import db from "./db.js";
 import artistsRouter from "./routes/artists.js";
 import bookingsRouter from "./routes/bookings.js";
+import documentsRouter from "./routes/documents.js";
 import authRouter from "./routes/auth.js";
 import notificationsRouter from "./routes/notifications.js";
 import messagesRouter from "./routes/messages.js";
@@ -51,7 +52,7 @@ const defaultOrigins = [
   "http://localhost:5173",
   "http://127.0.0.1:5173",
   "https://on-the-bill.vercel.app",
-  "https://on-the-bill-git-main.vercel.app",
+  "https://line-up-yrh2.vercel.app/",
 ];
 const envOrigins = (process.env.CORS_ORIGINS || "")
   .split(",")
@@ -64,7 +65,7 @@ function isOriginAllowed(origin) {
   const normalized = origin.replace(/\/$/, "");
   if (allowedOrigins.includes(normalized)) return true;
   // Preview deployments: https://on-the-bill-*.vercel.app
-  if (/^https:\/\/on-the-bill[a-z0-9-]*\.vercel\.app$/i.test(normalized)) {
+  if (/^https:\/\/line-up-yrh2[a-z0-9-]*\.vercel\.app$/i.test(normalized)) {
     return true;
   }
   return false;
@@ -146,6 +147,7 @@ app.get("/api/health", async (_req, res) => {
 
 app.use("/api/artists", artistsRouter);
 app.use("/api/bookings", bookingsRouter);
+app.use("/api/documents", documentsRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/notifications", notificationsRouter);
 app.use("/api/messages", messagesRouter);

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import crypto from "crypto";
 import db from "../db.js";
+import { ensureContract, ensureReceipt } from "../lib/documents.js";
 
 const router = Router();
 
@@ -54,7 +55,7 @@ router.post("/payfast/itn", async (req, res) => {
     return res.status(400).send("Missing booking reference");
   }
 
-  const existing = db
+  const existing = await db
     .prepare("SELECT * FROM bookings WHERE id = ?")
     .get(bookingId);
 
@@ -81,6 +82,13 @@ router.post("/payfast/itn", async (req, res) => {
        WHERE id = ?`
     ).run(nextPayment, nextStatus, paidAt, bookingId);
 
+    const row = await db.prepare("SELECT * FROM bookings WHERE id = ?").get(bookingId);
+    if (row && (row.status === "confirmed" || row.status === "paid")) {
+      await ensureContract(row);
+    }
+    if (row) {
+      await ensureReceipt(row, nextPayment === "paid" ? "full" : "deposit");
+    }
     console.info(
       `[payfast/itn] Booking ${bookingId} marked ${nextPayment} (pf=${pf_payment_id}, amount=${amount_gross})`
     );

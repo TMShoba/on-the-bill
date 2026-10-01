@@ -4,6 +4,7 @@ import db from "../db.js";
 import { optionalAuth, requireAuth } from "../middleware/auth.js";
 import { rateLimit } from "../lib/rateLimit.js";
 import { sanitizeString, normalizeEmail, isValidEmail } from "../lib/security.js";
+import { ensureContract, ensureReceipt } from "../lib/documents.js";
 
 const router = Router();
 
@@ -328,9 +329,15 @@ router.patch("/:id", requireAuth, async (req, res) => {
     req.params.id
   );
 
-  const row = db
+  const row = await db
     .prepare("SELECT * FROM bookings WHERE id = ?")
     .get(req.params.id);
+  if (row && (nextStatus === "confirmed" || nextStatus === "paid")) {
+    await ensureContract(row);
+  }
+  if (row && (nextPayment === "deposit" || nextPayment === "paid")) {
+    await ensureReceipt(row, nextPayment === "paid" ? "full" : "deposit");
+  }
   res.json(mapBooking(row));
 });
 
