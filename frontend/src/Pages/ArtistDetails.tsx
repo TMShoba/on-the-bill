@@ -14,6 +14,9 @@ import { resolveArtistImage } from "../utils/imageCdn";
 import PublicAvailabilityCalendar, {
   confirmedDatesFromGigs,
 } from "../components/PublicAvailabilityCalendar";
+import GigCalendar from "../components/GigCalendar";
+import { api } from "../Services/api";
+import type { Booking } from "../Types/Artist";
 import {
   type PaymentMethod,
   redirectToPayFast,
@@ -43,6 +46,8 @@ export default function ArtistDetails() {
   const [manualDetails, setManualDetails] =
     useState<ManualPaymentDetails | null>(null);
   const [saved, setSaved] = useState(false);
+  const [artistGigs, setArtistGigs] = useState<Booking[]>([]);
+  const [dayGigs, setDayGigs] = useState<Booking[]>([]);
 
   const busyDates = useMemo(() => {
     const gigs = getDemoGigs();
@@ -59,6 +64,23 @@ export default function ArtistDetails() {
       undefined
     );
   }, [artist]);
+
+
+  useEffect(() => {
+    if (!artist?.id) return;
+    let cancelled = false;
+    api
+      .get<Booking[]>(`/bookings/artist/${artist.id}/calendar`)
+      .then(({ data }) => {
+        if (!cancelled) setArtistGigs(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        if (!cancelled) setArtistGigs([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [artist?.id]);
 
   useEffect(() => {
     if (artist && user) {
@@ -266,13 +288,35 @@ export default function ArtistDetails() {
             {/* Lighter public-facing availability calendar */}
             <div className="mt-6">
               <h2 className="mb-2 text-lg font-bold text-slate-900">
-                Availability
+                Artist calendar
               </h2>
               <p className="mb-3 text-sm text-slate-500">
-                Open dates promoters can request. Busy days are already
-                confirmed.
+                Same calendar the artist uses. Each dot is a gig — green confirmed,
+                amber pending, sky paid, rose declined. Tap a day to see the city,
+                venue and time. Other promoters' names and fees stay hidden.
               </p>
-              <PublicAvailabilityCalendar busyDates={busyDates} />
+              <GigCalendar
+                gigs={artistGigs}
+                onSelectDay={(_date, list) => setDayGigs(list)}
+                onSelectGig={(gig) => setDayGigs([gig])}
+              />
+              {dayGigs.length > 0 && (
+                <ul className="mt-3 space-y-2">
+                  {dayGigs.map((g) => (
+                    <li key={g.id} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                      <span className="font-semibold text-slate-900">{g.venue || "Gig"}</span>
+                      <span className="text-slate-500">
+                        {" "}· {g.eventDate}{g.time ? ` · ${g.time}` : ""}{g.city ? ` · ${g.city}` : ""} · <span className="capitalize">{g.status}</span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {artistGigs.length === 0 && (
+                <p className="mt-3 text-sm text-slate-500">
+                  No gigs on this artist's calendar yet — open dates are free to request.
+                </p>
+              )}
             </div>
           </div>
 
