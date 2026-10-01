@@ -113,6 +113,42 @@ router.get("/", optionalAuth, (req, res) => {
   res.json(rows.map(mapBooking));
 });
 
+
+// GET /api/bookings/artist/:artistId/calendar
+// Promoters see the artist's gigs (status, time, city) — not other promoters' contact or fee.
+router.get("/artist/:artistId/calendar", optionalAuth, async (req, res) => {
+  try {
+    const rows = await db
+      .prepare(
+        `SELECT id, artist_id, artist_name, event_date, time, city, venue, status
+         FROM bookings
+         WHERE artist_id::text = ?
+           AND status IN ('pending', 'confirmed', 'paid', 'declined')
+         ORDER BY event_date ASC`
+      )
+      .all(String(req.params.artistId));
+    const list = Array.isArray(rows) ? rows : [];
+    res.json(
+      list.map((row) => ({
+        id: row.id,
+        artistId: row.artist_id,
+        artistName: row.artist_name,
+        eventDate: String(row.event_date || "").slice(0, 10),
+        time: row.time || "",
+        city: row.city || "",
+        venue: row.venue || (row.status === "pending" ? "Hold" : "Booked"),
+        status: row.status,
+        clientName: "",
+        clientEmail: "",
+        message: "",
+      }))
+    );
+  } catch (e) {
+    console.error("artist calendar", e);
+    res.status(500).json({ message: "Failed to load artist calendar" });
+  }
+});
+
 // GET /api/bookings/:id
 router.get("/:id", optionalAuth, async (req, res) => {
   const row = db
