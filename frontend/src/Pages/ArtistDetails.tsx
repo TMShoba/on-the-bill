@@ -5,15 +5,11 @@ import { useArtist } from "../hooks/useArtists";
 import { useAuth } from "../context/AuthContext";
 import {
   addPromoterBookingAsync,
-  getDemoGigs,
   DEMO_ARTIST,
   DEMO_PROMOTER,
 } from "../Services/demoStore";
 import { mockMessagingApi } from "../Services/mockMessagingApi";
 import { resolveArtistImage } from "../utils/imageCdn";
-import {
-  confirmedDatesFromGigs,
-} from "../components/PublicAvailabilityCalendar";
 import GigCalendar from "../components/GigCalendar";
 import { api } from "../Services/api";
 import type { Booking } from "../Types/Artist";
@@ -48,13 +44,6 @@ export default function ArtistDetails() {
   const [saved, setSaved] = useState(false);
   const [artistGigs, setArtistGigs] = useState<Booking[]>([]);
   const [dayGigs, setDayGigs] = useState<Booking[]>([]);
-
-  const busyDates = useMemo(() => {
-    const gigs = getDemoGigs();
-    return confirmedDatesFromGigs(
-      gigs.filter((g) => g.artistId === DEMO_ARTIST.id)
-    );
-  }, []);
 
   const profilePhoto = useMemo(() => {
     if (!artist) return undefined;
