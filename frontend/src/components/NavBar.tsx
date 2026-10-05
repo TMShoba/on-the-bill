@@ -27,6 +27,7 @@ export default function NavBar() {
       { name: "Dashboard", to: "/dashboard" },
       { name: "Messages", to: "/messages", badge: unread }
     );
+    if (user?.isAdmin) navItems.push({ name: "Admin", to: "/admin/verifications" });
   } else {
     navItems.push({ name: "Login", to: "/login" });
   }

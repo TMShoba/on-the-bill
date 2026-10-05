@@ -1,3 +1,4 @@
+import { isAdminEmail } from "./admin.js";
 /**
  * Security helpers — validation, sanitization, headers.
  * No extra dependencies; safe defaults for a booking API.
@@ -113,6 +114,8 @@ export function publicUser(row) {
     role: row.role === "client" ? "promoter" : row.role,
     artistId: row.artist_id || row.artistId || undefined,
     createdAt: row.created_at || row.createdAt,
+    isAdmin: isAdminEmail(row.email),
+    emailNotifications: row.email_notifications === undefined ? true : Boolean(row.email_notifications),
   };
 }
 

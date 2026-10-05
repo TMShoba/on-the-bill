@@ -1,12 +1,10 @@
 import { api } from "./api";
-import type { Booking, BookingStatus, PaymentStatus } from "../Types/Artist";
-import {
-  notifyNewBookingRequest,
-  notifyBookingStatusChange,
-  notifyPaymentReceived,
-} from "./notificationStore";
-import { recordSuccessfulGig } from "./reputationStore";
-import { createReceipt } from "./receiptStore";
+import type {
+  Booking,
+  BookingStatus,
+  PaymentStatus,
+  TravelRequirements,
+} from "../Types/Artist";
 
 export type CreateBookingPayload = {
   artistId: string;
@@ -22,22 +20,16 @@ export type CreateBookingPayload = {
   promoterName?: string;
   notes?: string;
   reminderOptIn?: boolean;
+  eventCountry?: string;
+  eventTimezone?: string;
+  travel?: TravelRequirements;
 };
 
 export async function createBooking(
   payload: CreateBookingPayload
 ): Promise<Booking> {
+  // The API notifies the artist
   const { data } = await api.post<Booking>("/bookings", payload);
-  try {
-    notifyNewBookingRequest({
-      artistId: data.artistId,
-      promoterName: data.promoterName || data.clientName,
-      venue: data.venue || "an event",
-      eventDate: data.eventDate,
-    });
-  } catch {
-    /* local notifications optional */
-  }
   return data;
 }
 
@@ -55,21 +47,8 @@ export async function updateBookingStatusApi(
   id: string,
   status: BookingStatus
 ): Promise<Booking> {
+  // The API generates the contract and notifies the promoter
   const { data } = await api.patch<Booking>(`/bookings/${id}`, { status });
-  try {
-    if (status === "confirmed" || status === "declined") {
-      notifyBookingStatusChange({
-        promoterId: data.promoterId || data.clientEmail,
-        artistId: data.artistId,
-        artistName: data.artistName,
-        venue: data.venue || "your event",
-        eventDate: data.eventDate,
-        status,
-      });
-    }
-  } catch {
-    /* ignore */
-  }
   return data;
 }
 
@@ -83,36 +62,7 @@ export async function updateBookingPaymentApi(
     disputeReason,
     status: paymentStatus === "paid" ? "paid" : undefined,
   });
-  try {
-    if (paymentStatus === "paid" || paymentStatus === "deposit") {
-      recordSuccessfulGig(data.artistId);
-      const amount = data.fee || 0;
-      const depositAmt = paymentStatus === "deposit" ? Math.round(amount * 0.3) : amount;
-      createReceipt({
-        bookingId: data.id,
-        artistId: data.artistId,
-        artistName: data.artistName,
-        promoterName: data.promoterName || data.clientName,
-        promoterEmail: data.clientEmail,
-        amount: depositAmt,
-        platformFee: Math.round(depositAmt * 0.05),
-        artistPayout: Math.round(depositAmt * 0.95),
-        kind: paymentStatus === "deposit" ? "deposit" : "full",
-        method: "manual",
-        status: "paid",
-        paidAt: data.paidAt || new Date().toISOString(),
-      });
-      notifyPaymentReceived({
-        artistId: data.artistId,
-        promoterId: data.promoterId || data.clientEmail,
-        amount: depositAmt,
-        venue: data.venue || "your event",
-        kind: paymentStatus === "deposit" ? "deposit" : "full",
-      });
-    }
-  } catch {
-    /* ignore */
-  }
+  // The API records the receipt and notifies both parties
   return data;
 }
 

@@ -1,20 +1,12 @@
 import { Link } from "react-router-dom";
 import { motion } from "motion/react";
-import { useState } from "react";
 import { resolveArtistImage } from "../utils/imageCdn";
 import VerificationBadge from "./VerificationBadge";
-import { getVerification } from "../Services/verificationStore";
 import { useAuth } from "../context/AuthContext";
-import { isFavorite, toggleFavorite } from "../Services/favoritesStore";
-
-type Artist = {
-  id: string;
-  stageName: string;
-  genre: string;
-  location: string;
-  rate: number;
-  imageUrl: string;
-};
+import { useFavorites, useToggleFavorite } from "../Services/favoritesStore";
+import type { Artist } from "../Types/Artist";
+import { useCurrency } from "../context/CurrencyContext";
+import { priceDisplay } from "../Services/pricing";
 
 interface ArtistCardProps {
   artist: Artist;
@@ -23,19 +15,21 @@ interface ArtistCardProps {
 export default function ArtistCard({ artist }: ArtistCardProps) {
   const { user, isAuthenticated } = useAuth();
   const src = resolveArtistImage(artist.imageUrl, artist.id, "card");
+  const { estimate } = useCurrency();
+  const price = priceDisplay(artist);
   const canSave =
     isAuthenticated &&
     (user?.role === "promoter" || user?.role === "client");
-  const [saved, setSaved] = useState(() =>
-    user ? isFavorite(user.id, artist.id) : false
-  );
+  const favoritesUserId = canSave ? user?.id : undefined;
+  const { data: favorites = [] } = useFavorites(favoritesUserId);
+  const toggleFavorite = useToggleFavorite(favoritesUserId);
+  const saved = favorites.some((a) => a.id === artist.id);
 
   function onToggleSave(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
     if (!user || !canSave) return;
-    const nowSaved = toggleFavorite(user.id, artist);
-    setSaved(nowSaved);
+    toggleFavorite.mutate({ artist, save: !saved });
   }
 
   return (
@@ -85,7 +79,7 @@ export default function ArtistCard({ artist }: ArtistCardProps) {
             {artist.stageName}
           </h3>
           <VerificationBadge
-            status={getVerification(artist.id).status}
+            status={artist.verificationStatus || "unverified"}
             hideIfUnverified
           />
         </div>
@@ -93,8 +87,14 @@ export default function ArtistCard({ artist }: ArtistCardProps) {
 
         <div className="mt-4 flex items-center justify-between">
           <p className="text-base font-bold text-emerald-600">
-            R{artist.rate.toLocaleString()}
-            <span className="text-sm font-medium text-slate-400">+</span>
+            {price.label}
+            {price.kind === "exact" && <span className="text-sm font-medium text-slate-400">+</span>}
+            {price.amount != null && estimate(price.amount) && (
+              <span className="block text-xs font-medium text-slate-400">
+                {price.kind === "band" ? "from " : ""}
+                {estimate(price.amount)}
+              </span>
+            )}
           </p>
           <span className="text-sm font-medium text-slate-400 transition group-hover:text-slate-900">
             View →

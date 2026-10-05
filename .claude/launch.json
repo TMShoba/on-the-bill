@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "frontend-local-api",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "set VITE_API_URL=http://localhost:4555&& cd frontend && npx vite --port 5180 --strictPort"
+      ],
+      "port": 5180
+    }
+  ]
+}

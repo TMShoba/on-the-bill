@@ -1,5 +1,5 @@
+import axios from "axios";
 import type { Conversation, Message, MessageAttachment } from "../Types/Artist";
-import { notifyNewMessage } from "./notificationStore";
 import {
   listConversationsApi,
   getMessagesApi,
@@ -22,6 +22,15 @@ function read<T>(key: string, fallback: T): T {
 
 function write<T>(key: string, value: T) {
   localStorage.setItem(key, JSON.stringify(value));
+}
+
+/**
+ * Only fall back to the browser copy when the API can't be reached. A real
+ * error (403, 400 "file too large"…) must surface, or the sender would think
+ * a message was delivered that the other side never receives.
+ */
+function isApiUnreachable(e: unknown): boolean {
+  return axios.isAxiosError(e) && !e.response;
 }
 
 function uid() {
@@ -103,16 +112,6 @@ const local = {
         lastMessagePreview: preview.slice(0, 80),
       };
       write(CONV_KEY, convs);
-
-      const recipientId =
-        input.senderId === conv.artistId ? conv.promoterId : conv.artistId;
-      if (recipientId && recipientId !== input.senderId) {
-        notifyNewMessage({
-          recipientId,
-          senderName: input.senderName,
-          preview,
-        });
-      }
     }
 
     return msg;
@@ -173,6 +172,7 @@ export const mockMessagingApi = {
     try {
       return await listConversationsApi();
     } catch (e) {
+      if (!isApiUnreachable(e)) throw e;
       console.warn("Messages API offline, using local conversations", e);
       return local.listConversations(userId);
     }
@@ -185,6 +185,7 @@ export const mockMessagingApi = {
     try {
       return await getMessagesApi(conversationId);
     } catch (e) {
+      if (!isApiUnreachable(e)) throw e;
       console.warn("Messages API offline, using local messages", e);
       return local.getMessages(conversationId, userId);
     }
@@ -204,42 +205,10 @@ export const mockMessagingApi = {
         body: input.body,
         attachment: input.attachment,
       });
-      // Keep a local copy so UI/refetch still works if API blips
-      try {
-        const msgs = read<Message[]>(MSG_KEY, []);
-        if (!msgs.some((m) => m.id === msg.id)) {
-          msgs.push({
-            ...msg,
-            senderId: msg.senderId || input.senderId,
-            read: true,
-          });
-          write(MSG_KEY, msgs);
-        }
-      } catch {
-        /* ignore */
-      }
-      // Local notification for the other party when we can resolve them
-      try {
-        const convs = await listConversationsApi();
-        const conv = convs.find((c) => c.id === input.conversationId);
-        if (conv) {
-          const recipientId =
-            input.senderId === conv.artistId
-              ? conv.promoterId
-              : conv.artistId;
-          if (recipientId && recipientId !== input.senderId) {
-            notifyNewMessage({
-              recipientId,
-              senderName: input.senderName,
-              preview: input.body || input.attachment?.name || "New message",
-            });
-          }
-        }
-      } catch {
-        /* ignore notify errors */
-      }
+      // The API notifies the other party
       return msg;
     } catch (e) {
+      if (!isApiUnreachable(e)) throw e;
       console.warn("sendMessage API failed, local fallback", e);
       return local.sendMessage(input);
     }
@@ -254,8 +223,12 @@ export const mockMessagingApi = {
     initialMessage?: string;
   }): Promise<Conversation> {
     try {
-      return await ensureConversationApi(input);
+      return await ensureConversationApi({
+        bookingId: input.bookingId,
+        initialMessage: input.initialMessage,
+      });
     } catch (e) {
+      if (!isApiUnreachable(e)) throw e;
       console.warn("ensureConversation API failed, local fallback", e);
       return local.ensureConversationForBooking(input);
     }
@@ -265,20 +238,35 @@ export const mockMessagingApi = {
     try {
       return await totalUnreadApi();
     } catch (e) {
+      if (!isApiUnreachable(e)) throw e;
       console.warn("unread API offline, using local", e);
       return local.totalUnread(userId);
     }
   },
 };
 
-/** Read a File into a MessageAttachment (capped for demo / SQLite) */
+/** Must match ALLOWED_ATTACHMENT_TYPES / MAX_ATTACHMENT_BYTES in backend/src/routes/messages.js */
+export const ATTACHMENT_ACCEPT = ".pdf,.doc,.docx,.xls,.xlsx,.txt,.png,.jpg,.jpeg";
+const ALLOWED_TYPES = new Set([
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "text/plain",
+  "image/png",
+  "image/jpeg",
+]);
+const MAX_BYTES = 2 * 1024 * 1024;
+
+/** Read a File into a MessageAttachment for upload */
 export function fileToAttachment(file: File): Promise<MessageAttachment> {
-  const MAX = 1.5 * 1024 * 1024;
-  if (file.size > MAX) {
+  if (file.size > MAX_BYTES) {
+    return Promise.reject(new Error("Files must be 2 MB or smaller."));
+  }
+  if (!ALLOWED_TYPES.has(file.type)) {
     return Promise.reject(
-      new Error(
-        "File too large (max ~1.5MB). Use PDF or a smaller file."
-      )
+      new Error("Send a PDF, Word, Excel, text or image (PNG/JPG) file.")
     );
   }
   return new Promise((resolve, reject) => {

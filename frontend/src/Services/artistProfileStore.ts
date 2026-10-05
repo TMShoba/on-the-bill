@@ -1,4 +1,7 @@
-/** Local profile data for artists: banking + completeness fields */
+/** Artist profile data (stored on the API): banking + completeness fields */
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { api } from "./api";
+import type { PriceVisibility } from "../Types/Artist";
 
 export type BankingDetails = {
   bankName: string;
@@ -15,45 +18,104 @@ export type ArtistProfileExtras = {
   phone?: string;
   instagram?: string;
   hasPhoto?: boolean;
+  /** Public URL of the uploaded profile photo */
+  photoUrl?: string | null;
+  priceVisibility?: PriceVisibility;
 };
 
-const BANK_KEY = "otb_artist_banking_";
-const EXTRAS_KEY = "otb_artist_extras_";
+export type ArtistProfile = {
+  artistId: string;
+  extras: ArtistProfileExtras;
+  banking: BankingDetails | null;
+};
 
-export function getBankingDetails(artistId: string): BankingDetails | null {
+export function artistProfileQueryKey(userId: string | undefined) {
+  return ["artist-profile", userId] as const;
+}
+
+export async function getMyArtistProfile(): Promise<ArtistProfile> {
+  const { data } = await api.get<ArtistProfile>("/artist-profile/me");
+  return data;
+}
+
+export async function saveProfileExtras(
+  extras: ArtistProfileExtras
+): Promise<ArtistProfile> {
+  const { data } = await api.patch<ArtistProfile>("/artist-profile/me", extras);
+  return data;
+}
+
+export async function saveBankingDetails(
+  details: BankingDetails
+): Promise<ArtistProfile> {
+  const { data } = await api.put<ArtistProfile>("/artist-profile/me/banking", details);
+  return data;
+}
+
+/**
+ * Banking for a booked artist. The API only returns it to the artist or to a
+ * promoter with a confirmed booking; anything else resolves to null.
+ */
+export async function getArtistBanking(
+  artistId: string
+): Promise<BankingDetails | null> {
   try {
-    const raw = localStorage.getItem(`${BANK_KEY}${artistId}`);
-    return raw ? (JSON.parse(raw) as BankingDetails) : null;
+    const { data } = await api.get<{ banking: BankingDetails | null }>(
+      `/artist-profile/${encodeURIComponent(artistId)}/banking`
+    );
+    return data?.banking || null;
   } catch {
     return null;
   }
 }
 
-export function saveBankingDetails(
-  artistId: string,
-  details: BankingDetails
-): void {
-  localStorage.setItem(`${BANK_KEY}${artistId}`, JSON.stringify(details));
+/** The signed-in artist's own profile (extras + banking). */
+export function useMyArtistProfile(userId: string | undefined) {
+  return useQuery({
+    queryKey: artistProfileQueryKey(userId),
+    queryFn: getMyArtistProfile,
+    enabled: Boolean(userId),
+  });
 }
 
-export function getProfileExtras(artistId: string): ArtistProfileExtras {
-  try {
-    const raw = localStorage.getItem(`${EXTRAS_KEY}${artistId}`);
-    return raw ? (JSON.parse(raw) as ArtistProfileExtras) : {};
-  } catch {
-    return {};
-  }
+export function useSaveProfileExtras(userId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: saveProfileExtras,
+    onSuccess: (profile) => qc.setQueryData(artistProfileQueryKey(userId), profile),
+  });
 }
 
-export function saveProfileExtras(
-  artistId: string,
-  extras: ArtistProfileExtras
-): void {
-  const prev = getProfileExtras(artistId);
-  localStorage.setItem(
-    `${EXTRAS_KEY}${artistId}`,
-    JSON.stringify({ ...prev, ...extras })
-  );
+export function useSaveBankingDetails(userId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: saveBankingDetails,
+    onSuccess: (profile) => qc.setQueryData(artistProfileQueryKey(userId), profile),
+  });
+}
+
+export async function uploadProfilePhoto(dataUrl: string): Promise<ArtistProfile> {
+  const { data } = await api.put<ArtistProfile>("/artist-profile/me/photo", { dataUrl }, { timeout: 60000 });
+  return data;
+}
+
+export async function removeProfilePhoto(): Promise<ArtistProfile> {
+  const { data } = await api.delete<ArtistProfile>("/artist-profile/me/photo");
+  return data;
+}
+
+/** Upload/remove the profile photo and refresh every view that shows it */
+export function useProfilePhoto(userId: string | undefined) {
+  const qc = useQueryClient();
+  const onSuccess = (profile: ArtistProfile) => {
+    qc.setQueryData(artistProfileQueryKey(userId), profile);
+    qc.invalidateQueries({ queryKey: ["artist"] });
+    qc.invalidateQueries({ queryKey: ["artists"] });
+  };
+  return {
+    upload: useMutation({ mutationFn: uploadProfilePhoto, onSuccess }),
+    remove: useMutation({ mutationFn: removeProfilePhoto, onSuccess }),
+  };
 }
 
 export type ProfileCheck = {
@@ -66,18 +128,16 @@ export type ProfileCheck = {
 
 /** Score profile completeness — complete profiles book and get paid faster */
 export function getProfileStrength(
-  artistId: string,
+  profile: ArtistProfile | undefined,
   opts?: {
+    artistId?: string;
     hasPhoto?: boolean;
     hasPublicBio?: boolean;
   }
 ): { percent: number; checks: ProfileCheck[]; nextHint: string } {
-  const bank = getBankingDetails(artistId);
-  const extras = getProfileExtras(artistId);
-  const photo =
-    opts?.hasPhoto ||
-    extras.hasPhoto ||
-    Boolean(localStorage.getItem(`otb_artist_photo_${artistId}`));
+  const bank = profile?.banking;
+  const extras = profile?.extras || {};
+  const photo = opts?.hasPhoto || extras.hasPhoto;
 
   const bankComplete = Boolean(
     bank?.bankName &&
@@ -90,7 +150,7 @@ export function getProfileStrength(
     {
       id: "photo",
       label: "Profile photo",
-      done: photo,
+      done: Boolean(photo),
       weight: 20,
       hint: "Add a clear press photo so promoters recognise you",
     },

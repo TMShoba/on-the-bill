@@ -1,11 +1,30 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import axios from "axios";
 import {
   mockMessagingApi,
   fileToAttachment,
+  ATTACHMENT_ACCEPT,
 } from "../../Services/mockMessagingApi";
+import { downloadAttachmentApi } from "../../Services/messagingService";
 import { useAuth } from "../../context/AuthContext";
-import type { MessageAttachment } from "../../Types/Artist";
+import type { Conversation, MessageAttachment } from "../../Types/Artist";
+
+/** "Printworks London · 12 Dec 2026" */
+function bookingLabel(c: Conversation) {
+  const date = c.bookingDate
+    ? new Date(`${c.bookingDate}T12:00:00`).toLocaleDateString(undefined, {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      })
+    : "";
+  return [c.bookingVenue, date].filter(Boolean).join(" · ");
+}
+
+function errorMessage(e: unknown, fallback: string) {
+  return (axios.isAxiosError(e) && e.response?.data?.message) || fallback;
+}
 
 function formatSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
@@ -28,6 +47,8 @@ export default function MessagesPanel({ variant = "embedded" }: Props) {
     null
   );
   const [fileError, setFileError] = useState("");
+  const [downloading, setDownloading] = useState<string | null>(null);
+  const threadRef = useRef<HTMLDivElement>(null);
 
   const isPage = variant === "page";
 
@@ -38,24 +59,51 @@ export default function MessagesPanel({ variant = "embedded" }: Props) {
     refetchInterval: 5000,
   });
 
+  // Poll the open thread so replies show up without reopening the chat
   const { data: messages = [] } = useQuery({
     queryKey: ["messages", activeId],
     queryFn: () => mockMessagingApi.getMessages(activeId!, user!.id),
     enabled: Boolean(activeId && user),
+    refetchInterval: 4000,
   });
 
+  const lastMessageId = messages[messages.length - 1]?.id;
+  useEffect(() => {
+    // New message in view: stick to the bottom and refresh unread badges
+    // (opening the thread marks the other side's messages read)
+    const el = threadRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+    if (lastMessageId) {
+      qc.invalidateQueries({ queryKey: ["unread", user?.id] });
+      qc.invalidateQueries({ queryKey: ["conversations", user?.id] });
+    }
+  }, [lastMessageId, activeId, qc, user?.id]);
+
+  async function downloadAttachment(att: MessageAttachment) {
+    if (!att.id) return;
+    setDownloading(att.id);
+    setFileError("");
+    try {
+      await downloadAttachmentApi(att);
+    } catch (e) {
+      setFileError(errorMessage(e, "Could not download that file"));
+    } finally {
+      setDownloading(null);
+    }
+  }
+
+  // The draft is passed in as variables: onMutate clears the input, and the
+  // mutationFn must not read the (by then empty) component state
   const sendMut = useMutation({
-    mutationFn: () =>
+    mutationFn: (draft: { text: string; att: MessageAttachment | null }) =>
       mockMessagingApi.sendMessage({
         conversationId: activeId!,
         senderId: user!.id,
         senderName: user!.name || "You",
-        body: body.trim(),
-        attachment: pendingFile || undefined,
+        body: draft.text,
+        attachment: draft.att || undefined,
       }),
-    onMutate: async () => {
-      const text = body.trim();
-      const att = pendingFile;
+    onMutate: async ({ text, att }) => {
       // Clear input immediately for snappy UX
       setBody("");
       setPendingFile(null);
@@ -82,11 +130,11 @@ export default function MessagesPanel({ variant = "embedded" }: Props) {
       });
       return { prev };
     },
-    onError: (_err, _vars, ctx) => {
+    onError: (err, _vars, ctx) => {
       if (ctx?.prev) {
         qc.setQueryData(["messages", activeId], ctx.prev);
       }
-      setFileError("Could not send — try again");
+      setFileError(errorMessage(err, "Could not send — try again"));
     },
     onSuccess: (msg) => {
       // Replace optimistic temp message with server message
@@ -193,6 +241,11 @@ export default function MessagesPanel({ variant = "embedded" }: Props) {
                     </span>
                   )}
                 </div>
+                {bookingLabel(c) && (
+                  <span className="truncate text-[11px] font-medium text-emerald-700">
+                    {bookingLabel(c)}
+                  </span>
+                )}
                 <span className="truncate text-xs text-slate-500">
                   {c.lastMessagePreview || "No messages yet"}
                 </span>
@@ -246,14 +299,17 @@ export default function MessagesPanel({ variant = "embedded" }: Props) {
                   {peerName}
                 </p>
                 <p className="truncate text-[11px] text-slate-400">
-                  Booking chat
+                  {(active && bookingLabel(active)) || "Booking chat"}
                 </p>
               </div>
             </div>
 
             <div
+              ref={threadRef}
               className={`flex-1 space-y-3 overflow-y-auto px-3 py-4 sm:px-4 ${
-                isPage ? "min-h-[40vh]" : "max-h-64 md:max-h-[280px]"
+                isPage
+                  ? "min-h-[40vh] max-h-[calc(100dvh-19rem)] md:max-h-[calc(100dvh-21rem)]"
+                  : "max-h-64 md:max-h-[280px]"
               }`}
             >
               {messages.map((m) => {
@@ -276,18 +332,34 @@ export default function MessagesPanel({ variant = "embedded" }: Props) {
                         </p>
                       )}
                       {m.body && <p className="whitespace-pre-wrap">{m.body}</p>}
-                      {m.attachment && (
-                        <a
-                          href={m.attachment.dataUrl}
-                          download={m.attachment.name}
-                          className={`mt-1 block text-xs underline ${
-                            mine ? "text-emerald-200" : "text-emerald-700"
-                          }`}
-                        >
-                          📎 {m.attachment.name} (
-                          {formatSize(m.attachment.size)})
-                        </a>
-                      )}
+                      {m.attachment &&
+                        (m.attachment.id ? (
+                          <button
+                            type="button"
+                            onClick={() => downloadAttachment(m.attachment!)}
+                            disabled={downloading === m.attachment.id}
+                            className={`mt-1 block text-left text-xs underline disabled:opacity-60 ${
+                              mine ? "text-emerald-200" : "text-emerald-700"
+                            }`}
+                          >
+                            📎 {m.attachment.name} ({formatSize(m.attachment.size)})
+                            {downloading === m.attachment.id ? " · downloading…" : ""}
+                          </button>
+                        ) : m.attachment.dataUrl ? (
+                          <a
+                            href={m.attachment.dataUrl}
+                            download={m.attachment.name}
+                            className={`mt-1 block text-xs underline ${
+                              mine ? "text-emerald-200" : "text-emerald-700"
+                            }`}
+                          >
+                            📎 {m.attachment.name} ({formatSize(m.attachment.size)})
+                          </a>
+                        ) : (
+                          <p className="mt-1 text-xs opacity-70">
+                            📎 {m.attachment.name} (file not available)
+                          </p>
+                        ))}
                     </div>
                   </div>
                 );
@@ -328,14 +400,14 @@ export default function MessagesPanel({ variant = "embedded" }: Props) {
                 onSubmit={(e) => {
                   e.preventDefault();
                   if (!body.trim() && !pendingFile) return;
-                  sendMut.mutate();
+                  sendMut.mutate({ text: body.trim(), att: pendingFile });
                 }}
               >
                 <input
                   ref={fileRef}
                   type="file"
                   className="hidden"
-                  accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.txt,.xls,.xlsx"
+                  accept={ATTACHMENT_ACCEPT}
                   onChange={(e) => onFileChange(e.target.files?.[0] || null)}
                 />
                 <button
@@ -363,7 +435,7 @@ export default function MessagesPanel({ variant = "embedded" }: Props) {
                 </button>
               </form>
               <p className="mt-1.5 text-[10px] text-slate-400">
-                Attach rider, invoice or contract (max ~1.5MB in demo)
+                Attach a rider, invoice or contract: PDF, Word, Excel, text or image, up to 2 MB
               </p>
             </div>
           </>

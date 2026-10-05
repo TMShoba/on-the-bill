@@ -6,7 +6,7 @@ import ToggleSwitch from "../components/ToggleSwitch";
 import BankingDetailsForm from "../components/BankingDetailsForm";
 import ArtistVerificationPanel from "../components/ArtistVerificationPanel";
 import { useAuth } from "../context/AuthContext";
-import { getSettings, saveSettings, clearLocalDemoData } from "../Services/settingsStore";
+import { getSettings, saveSettings, clearLocalDemoData, useEmailNotifications } from "../Services/settingsStore";
 
 export default function Settings() {
   const { user, isAuthenticated, updateUser, logout } = useAuth();
@@ -17,6 +17,7 @@ export default function Settings() {
   const [settings, setSettings] = useState(() =>
     user ? getSettings(user.id) : { emailNotifications: true, reminderDefaultOptIn: true }
   );
+  const emailPref = useEmailNotifications(user?.id);
   const [resetConfirming, setResetConfirming] = useState(false);
   const [resetDone, setResetDone] = useState(false);
 
@@ -136,10 +137,10 @@ export default function Settings() {
 
             <div className="mt-4 space-y-4 divide-y divide-slate-100">
               <ToggleSwitch
-                checked={settings.emailNotifications}
-                onChange={(v) => updateSetting("emailNotifications", v)}
+                checked={emailPref.enabled}
+                onChange={(v) => emailPref.setEnabled(v)}
                 label="Email notifications"
-                description="Booking updates and new messages, simulated for this demo"
+                description="Booking requests, acceptances with your contract PDF, payment receipts and new messages"
               />
               {user.role === "artist" && (
                 <div className="pt-4">
@@ -160,7 +161,7 @@ export default function Settings() {
 
           {/* Banking details — artists only; gated on verification inside the form */}
           {user.role === "artist" && (
-            <BankingDetailsForm artistId={user.id} />
+            <BankingDetailsForm />
           )}
 
           {/* Danger zone */}

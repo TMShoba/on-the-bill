@@ -45,6 +45,7 @@ function mapApiUser(resUser: {
   role: string;
   artistId?: string;
   createdAt?: string;
+  isAdmin?: boolean;
 }): User {
   const role: UserRole =
     resUser.role === "artist"
@@ -59,6 +60,7 @@ function mapApiUser(resUser: {
     role,
     artistId: resUser.artistId,
     createdAt: resUser.createdAt || new Date().toISOString(),
+    isAdmin: Boolean(resUser.isAdmin),
   };
 }
 

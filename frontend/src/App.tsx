@@ -11,6 +11,7 @@ import Messages from "./Pages/Messages";
 import Terms from "./Pages/legal/Terms";
 import Privacy from "./Pages/legal/Privacy";
 import Cancellation from "./Pages/legal/Cancellation";
+import AdminVerifications from "./Pages/admin/Verifications";
 import { AuthProvider } from "./context/AuthContext";
 import MobileBottomNav from "./components/MobileBottomNav";
 import FloatingMessagesButton from "./components/FloatingMessagesButton";
@@ -35,6 +36,7 @@ function App() {
           <Route path="/legal/terms" element={<Terms />} />
           <Route path="/legal/privacy" element={<Privacy />} />
           <Route path="/legal/cancellation" element={<Cancellation />} />
+          <Route path="/admin/verifications" element={<AdminVerifications />} />
         </Routes>
         <MobileBottomNav />
         <FloatingMessagesButton />

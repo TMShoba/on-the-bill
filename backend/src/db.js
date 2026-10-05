@@ -217,6 +217,123 @@ export async function migrate() {
     CREATE INDEX IF NOT EXISTS idx_receipts_artist ON receipts(artist_id);
     CREATE INDEX IF NOT EXISTS idx_receipts_promoter ON receipts(promoter_id);
 
+    CREATE TABLE IF NOT EXISTS artist_verifications (
+      user_id TEXT PRIMARY KEY,
+      artist_id TEXT,
+      claim_type TEXT DEFAULT '',
+      legal_name TEXT DEFAULT '',
+      id_number_last4 TEXT DEFAULT '',
+      id_doc_label TEXT DEFAULT '',
+      selfie_label TEXT DEFAULT '',
+      authority_note TEXT DEFAULT '',
+      social_proof_url TEXT DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'unverified'
+        CHECK (status IN ('unverified', 'pending_review', 'identity_verified', 'fully_verified', 'rejected')),
+      submitted_at TIMESTAMPTZ,
+      reviewed_at TIMESTAMPTZ,
+      rejection_reason TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS favorites (
+      user_id TEXT NOT NULL,
+      artist_id TEXT NOT NULL REFERENCES artists(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (user_id, artist_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS notifications (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      body TEXT DEFAULT '',
+      href TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      read_flag INTEGER DEFAULT 0
+    );
+
+    -- Keyed by catalog artist id (or the artist user id when not linked to the catalog)
+    CREATE TABLE IF NOT EXISTS artist_profiles (
+      artist_id TEXT PRIMARY KEY,
+      bio TEXT DEFAULT '',
+      demo_mix_url TEXT DEFAULT '',
+      phone TEXT DEFAULT '',
+      instagram TEXT DEFAULT '',
+      has_photo INTEGER DEFAULT 0,
+      bank_name TEXT DEFAULT '',
+      account_name TEXT DEFAULT '',
+      account_number TEXT DEFAULT '',
+      branch_code TEXT DEFAULT '',
+      account_type TEXT DEFAULT '',
+      reference_hint TEXT DEFAULT '',
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    -- International bookings: where the event is and what travel the promoter covers
+    ALTER TABLE bookings ADD COLUMN IF NOT EXISTS event_country TEXT DEFAULT 'ZA';
+    ALTER TABLE bookings ADD COLUMN IF NOT EXISTS event_timezone TEXT DEFAULT 'Africa/Johannesburg';
+    ALTER TABLE bookings ADD COLUMN IF NOT EXISTS travel_json TEXT;
+
+    -- Message files live apart from message rows so thread lists stay light
+    CREATE TABLE IF NOT EXISTS message_attachments (
+      id TEXT PRIMARY KEY,
+      message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+      conversation_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL,
+      size INTEGER NOT NULL,
+      data_base64 TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_message_attachments_message ON message_attachments(message_id);
+
+    -- Database storage driver (used when Supabase Storage isn't configured)
+    CREATE TABLE IF NOT EXISTS stored_files (
+      bucket TEXT NOT NULL,
+      key TEXT NOT NULL,
+      content_type TEXT NOT NULL,
+      size INTEGER NOT NULL,
+      data_base64 TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (bucket, key)
+    );
+
+    -- Attachments now live in storage; data_base64 remains for older rows
+    ALTER TABLE message_attachments ADD COLUMN IF NOT EXISTS storage_key TEXT;
+    ALTER TABLE message_attachments ALTER COLUMN data_base64 DROP NOT NULL;
+
+    ALTER TABLE artist_profiles ADD COLUMN IF NOT EXISTS photo_key TEXT;
+    -- exact | band | on_request
+    ALTER TABLE artist_profiles ADD COLUMN IF NOT EXISTS price_visibility TEXT DEFAULT 'band';
+    -- Secret for the read-only iCal feed (calendar apps can't send auth headers)
+    ALTER TABLE artist_profiles ADD COLUMN IF NOT EXISTS calendar_token TEXT;
+
+    CREATE TABLE IF NOT EXISTS artist_blocked_dates (
+      id TEXT PRIMARY KEY,
+      artist_id TEXT NOT NULL,
+      date TEXT NOT NULL,
+      note TEXT DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (artist_id, date)
+    );
+
+    -- Identity checks: full ID is never stored, only a hash (duplicate detection) + last 4
+    ALTER TABLE artist_verifications ADD COLUMN IF NOT EXISTS id_number_hash TEXT;
+    ALTER TABLE artist_verifications ADD COLUMN IF NOT EXISTS date_of_birth TEXT;
+    ALTER TABLE artist_verifications ADD COLUMN IF NOT EXISTS id_doc_key TEXT;
+    ALTER TABLE artist_verifications ADD COLUMN IF NOT EXISTS selfie_key TEXT;
+    ALTER TABLE artist_verifications ADD COLUMN IF NOT EXISTS reviewed_by TEXT;
+    ALTER TABLE artist_verifications ADD COLUMN IF NOT EXISTS review_notes TEXT;
+
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS email_notifications INTEGER DEFAULT 1;
+
+    CREATE INDEX IF NOT EXISTS idx_blocked_artist ON artist_blocked_dates(artist_id);
+    CREATE INDEX IF NOT EXISTS idx_verifications_status ON artist_verifications(status);
+
+    CREATE INDEX IF NOT EXISTS idx_verifications_artist ON artist_verifications(artist_id);
+    CREATE INDEX IF NOT EXISTS idx_favorites_user ON favorites(user_id);
+    CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at DESC);
+
     CREATE INDEX IF NOT EXISTS idx_bookings_artist ON bookings(artist_id);
     CREATE INDEX IF NOT EXISTS idx_bookings_promoter ON bookings(promoter_id);
     CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);

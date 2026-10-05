@@ -9,12 +9,17 @@
     "seed": "node src/seed.js"
   },
   "dependencies": {
+    "@expo-google-fonts/noto-sans": "^0.4.2",
+    "@supabase/supabase-js": "^2.117.2",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
+    "dejavu-fonts-ttf": "^2.37.3",
     "dotenv": "^17.4.2",
     "express": "^4.21.2",
+    "fontkit": "^2.0.4",
     "nodemailer": "^10.0.8",
-    "uuid": "^11.1.0",
-    "pg": "^8.13.3"
+    "pdfkit": "^0.20.2",
+    "pg": "^8.13.3",
+    "uuid": "^11.1.0"
   }
 }

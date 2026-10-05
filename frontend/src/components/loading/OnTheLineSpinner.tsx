@@ -1,37 +1,40 @@
 /**
- * "On the Line" — branded loading spinner for The LineUp / On the Bill.
- * Equalizer-style bars + pulsing line + optional label.
+ * Branded loader: the LineUp mark's three bars "set the lineup" one by one,
+ * inside a slowly rotating gradient ring.
  */
 import { cn } from "../../lib/utils";
 
 type Size = "sm" | "md" | "lg";
 
 type Props = {
-  /** Show the "On the Line" caption under the bars */
+  /** Caption under the mark; `true` shows the default */
   label?: boolean | string;
   size?: Size;
   className?: string;
-  /** Use light text (for dark overlays) */
+  /** Use on dark backgrounds */
   light?: boolean;
 };
 
-const sizeMap: Record<Size, { bar: string; gap: string; text: string }> = {
-  sm: { bar: "w-0.5 h-3", gap: "gap-0.5", text: "text-[10px]" },
-  md: { bar: "w-1 h-5", gap: "gap-1", text: "text-xs" },
-  lg: { bar: "w-1.5 h-8", gap: "gap-1.5", text: "text-sm" },
+const sizeMap: Record<Size, { box: string; ring: string; text: string }> = {
+  sm: { box: "h-7 w-7", ring: "p-[2px]", text: "text-[10px]" },
+  md: { box: "h-12 w-12", ring: "p-[2px]", text: "text-xs" },
+  lg: { box: "h-20 w-20", ring: "p-[3px]", text: "text-sm" },
 };
 
-const BAR_DELAYS = [0, 0.1, 0.2, 0.15, 0.05, 0.25, 0.12];
+const BARS = [
+  { y: 8, w: 9, delay: 0.3 },
+  { y: 14, w: 14, delay: 0.15 },
+  { y: 20, w: 20, delay: 0 },
+];
 
 export default function OnTheLineSpinner({
-  label = true,
+  label = false,
   size = "md",
   className,
   light = false,
 }: Props) {
   const s = sizeMap[size];
-  const caption =
-    typeof label === "string" ? label : label ? "On the Line" : null;
+  const caption = typeof label === "string" ? label : label ? "Loading" : null;
 
   return (
     <div
@@ -40,61 +43,64 @@ export default function OnTheLineSpinner({
       aria-live="polite"
       aria-label={caption || "Loading"}
     >
-      {/* Equalizer bars */}
-      <div className={cn("flex items-end", s.gap)} aria-hidden>
-        {BAR_DELAYS.map((delay, i) => (
-          <span
-            key={i}
-            className={cn(
-              s.bar,
-              "inline-block origin-bottom rounded-full bg-emerald-500",
-              light && "bg-emerald-300"
-            )}
-            style={{
-              animation: `otl-bar 0.9s ease-in-out ${delay}s infinite`,
-            }}
-          />
-        ))}
-      </div>
-
-      {/* Horizontal "the line" */}
-      <div
-        className={cn(
-          "relative h-px w-16 overflow-hidden rounded-full bg-emerald-500/25",
-          light && "bg-white/20"
-        )}
-        aria-hidden
-      >
+      <div className={cn("relative rounded-[30%]", s.ring)} aria-hidden>
+        {/* Rotating gradient ring */}
+        <span className="otl-ring absolute inset-0 rounded-[30%]" />
         <span
           className={cn(
-            "absolute inset-y-0 left-0 w-1/2 rounded-full bg-emerald-500",
-            light && "bg-emerald-200"
+            "relative flex items-center justify-center rounded-[28%]",
+            s.box,
+            light ? "bg-slate-950" : "bg-slate-900"
           )}
-          style={{ animation: "otl-sweep 1.2s ease-in-out infinite" }}
-        />
+        >
+          <svg viewBox="0 0 32 32" className="h-3/4 w-3/4" fill="none">
+            {BARS.map((b, i) => (
+              <rect
+                key={i}
+                x="6"
+                y={b.y}
+                width={b.w}
+                height="3"
+                rx="1.5"
+                fill={["#6ee7b7", "#34d399", "#10b981"][i]}
+                className="otl-bar"
+                style={{ animationDelay: `${b.delay}s` }}
+              />
+            ))}
+          </svg>
+        </span>
       </div>
 
       {caption && (
         <p
           className={cn(
             s.text,
-            "font-semibold tracking-[0.2em] uppercase",
-            light ? "text-white/90" : "text-emerald-800/80"
+            "font-semibold tracking-[0.18em] uppercase",
+            light ? "text-white/70" : "text-slate-500"
           )}
         >
           {caption}
         </p>
       )}
 
-      {/* Local keyframes — no global CSS file required */}
       <style>{`
-        @keyframes otl-bar {
-          0%, 100% { transform: scaleY(0.35); opacity: 0.55; }
-          50% { transform: scaleY(1); opacity: 1; }
+        .otl-ring {
+          background: conic-gradient(from 0deg, #10b981, #2dd4bf, transparent 55%, transparent 70%, #10b981);
+          animation: otl-spin 1.4s linear infinite;
         }
-        @keyframes otl-sweep {
-          0% { transform: translateX(-120%); }
-          100% { transform: translateX(220%); }
+        .otl-bar {
+          transform-box: fill-box;
+          transform-origin: left center;
+          animation: otl-build 1.4s cubic-bezier(.22,1,.36,1) infinite;
+        }
+        @keyframes otl-spin { to { transform: rotate(360deg); } }
+        @keyframes otl-build {
+          0% { transform: scaleX(0.15); opacity: 0.35; }
+          35%, 70% { transform: scaleX(1); opacity: 1; }
+          100% { transform: scaleX(0.15); opacity: 0.35; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .otl-ring, .otl-bar { animation: none; }
         }
       `}</style>
     </div>

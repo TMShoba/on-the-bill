@@ -9,6 +9,15 @@ import authRouter from "./routes/auth.js";
 import notificationsRouter from "./routes/notifications.js";
 import messagesRouter from "./routes/messages.js";
 import paymentsRouter from "./routes/payments.js";
+import verificationRouter from "./routes/verification.js";
+import favoritesRouter from "./routes/favorites.js";
+import artistProfileRouter from "./routes/artistProfile.js";
+import fxRouter from "./routes/fx.js";
+import calendarRouter from "./routes/calendar.js";
+import filesRouter from "./routes/files.js";
+import settingsRouter from "./routes/settings.js";
+import { ensureBuckets, storageDriver } from "./lib/storage.js";
+import { emailEnabled, testOutbox } from "./lib/mailer.js";
 import { isProductionSecretWeak } from "./lib/tokens.js";
 import { rateLimit } from "./lib/rateLimit.js";
 import { securityHeaders, safeErrorHandler } from "./lib/security.js";
@@ -19,6 +28,13 @@ import { migrate } from "./db.js";
 async function bootDatabase() {
   await migrate();
   console.log("Postgres schema ready.");
+  try {
+    await ensureBuckets();
+    console.log(`File storage: ${storageDriver}`);
+  } catch (e) {
+    console.error("Storage setup failed (uploads will error):", e.message);
+  }
+  console.log(`Email: ${emailEnabled ? "enabled" : "not configured (logging only)"}`);
   try {
     const seedMod = await import("./seed.js");
     await seedMod.default;
@@ -105,6 +121,12 @@ app.use(
   "/api/payments/payfast/itn",
   express.urlencoded({ extended: false, limit: "32kb" })
 );
+// Message attachments (≤2 MB files, ~2.7 MB as base64) need a larger body than the rest of the API;
+// the headroom lets slightly-too-big files reach the route and get a clear "2 MB" error
+app.use("/api/messages/conversations", express.json({ limit: "4mb" }));
+// ID document (≤8 MB) + selfie (≤5 MB) as base64, and artist photos (≤5 MB)
+app.use("/api/verification", express.json({ limit: "20mb" }));
+app.use("/api/artist-profile/me/photo", express.json({ limit: "8mb" }));
 app.use(express.json({ limit: "256kb" }));
 
 // Rate limit — skip OPTIONS so preflight is never 429'd
@@ -152,6 +174,18 @@ app.use("/api/auth", authRouter);
 app.use("/api/notifications", notificationsRouter);
 app.use("/api/messages", messagesRouter);
 app.use("/api/payments", paymentsRouter);
+app.use("/api/verification", verificationRouter);
+app.use("/api/favorites", favoritesRouter);
+app.use("/api/artist-profile", artistProfileRouter);
+app.use("/api/fx", fxRouter);
+app.use("/api/calendar", calendarRouter);
+app.use("/api/files", filesRouter);
+app.use("/api/settings", settingsRouter);
+
+// Dev-only: inspect captured emails (EMAIL_TEST_OUTBOX=true, never in production)
+if (process.env.EMAIL_TEST_OUTBOX === "true" && process.env.NODE_ENV !== "production") {
+  app.get("/api/dev/outbox", (_req, res) => res.json(testOutbox));
+}
 
 app.use((_req, res) => {
   res.status(404).json({ message: "Not found" });

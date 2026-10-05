@@ -1,122 +1,108 @@
 import { useRef, useState, type ChangeEvent } from "react";
-
-const PHOTO_KEY_PREFIX = "otb_artist_photo_";
-
-export function getStoredArtistPhoto(artistId: string): string | null {
-  try {
-    return localStorage.getItem(`${PHOTO_KEY_PREFIX}${artistId}`);
-  } catch {
-    return null;
-  }
-}
-
-export function setStoredArtistPhoto(artistId: string, dataUrl: string | null) {
-  const key = `${PHOTO_KEY_PREFIX}${artistId}`;
-  if (dataUrl) localStorage.setItem(key, dataUrl);
-  else localStorage.removeItem(key);
-}
+import axios from "axios";
+import { useAuth } from "../context/AuthContext";
+import { useMyArtistProfile, useProfilePhoto } from "../Services/artistProfileStore";
 
 type Props = {
-  artistId: string;
+  /** Catalog image shown until the artist uploads their own */
   currentImageUrl?: string;
-  onPhotoChange?: (dataUrl: string | null) => void;
+  onPhotoChange?: (photoUrl: string | null) => void;
 };
 
-/**
- * Photo upload control for the artist's own dashboard.
- * Stores a data-URL preview in localStorage for the demo;
- * a production app would upload to object storage / CDN.
- */
-export default function ArtistPhotoUpload({
-  artistId,
-  currentImageUrl,
-  onPhotoChange,
-}: Props) {
+const MAX_BYTES = 5 * 1024 * 1024;
+const TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+function readAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Could not read that file."));
+    reader.readAsDataURL(file);
+  });
+}
+
+/** Profile photo control for the artist's dashboard — uploads to file storage */
+export default function ArtistPhotoUpload({ currentImageUrl, onPhotoChange }: Props) {
+  const { user } = useAuth();
+  const { data: profile } = useMyArtistProfile(user?.id);
+  const { upload, remove } = useProfilePhoto(user?.id);
   const inputRef = useRef<HTMLInputElement>(null);
-  const [preview, setPreview] = useState<string | null>(() =>
-    getStoredArtistPhoto(artistId)
-  );
+  const [preview, setPreview] = useState<string | null>(null);
   const [error, setError] = useState("");
-  const [uploading, setUploading] = useState(false);
 
-  const displaySrc = preview || currentImageUrl;
+  const photoUrl = profile?.extras.photoUrl || null;
+  const displaySrc = preview || photoUrl || currentImageUrl;
+  const busy = upload.isPending || remove.isPending;
 
-  function handleFile(e: ChangeEvent<HTMLInputElement>) {
+  async function handleFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-
     setError("");
-    if (!file.type.startsWith("image/")) {
-      setError("Please choose an image file (JPG, PNG, WebP).");
+    if (!TYPES.includes(file.type)) {
+      setError("Please choose a JPG, PNG or WebP image.");
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
+    if (file.size > MAX_BYTES) {
       setError("Image must be under 5 MB.");
       return;
     }
-
-    setUploading(true);
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = String(reader.result || "");
-      setStoredArtistPhoto(artistId, dataUrl);
+    try {
+      const dataUrl = await readAsDataUrl(file);
       setPreview(dataUrl);
-      onPhotoChange?.(dataUrl);
-      setUploading(false);
-    };
-    reader.onerror = () => {
-      setError("Could not read that file.");
-      setUploading(false);
-    };
-    reader.readAsDataURL(file);
+      const next = await upload.mutateAsync(dataUrl);
+      onPhotoChange?.(next.extras.photoUrl || null);
+    } catch (err) {
+      setError((axios.isAxiosError(err) && err.response?.data?.message) || "Upload failed. Please try again.");
+    } finally {
+      setPreview(null);
+      if (inputRef.current) inputRef.current.value = "";
+    }
   }
 
-  function clearPhoto() {
-    setStoredArtistPhoto(artistId, null);
-    setPreview(null);
-    onPhotoChange?.(null);
-    if (inputRef.current) inputRef.current.value = "";
+  async function clearPhoto() {
+    setError("");
+    try {
+      await remove.mutateAsync();
+      onPhotoChange?.(null);
+    } catch {
+      setError("Could not remove the photo. Please try again.");
+    }
   }
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <h2 className="text-lg font-bold text-slate-900">Profile photo</h2>
-      <p className="mt-1 text-sm text-slate-500">
-        Upload a square or landscape photo promoters will see on your profile.
-      </p>
-
-      <div className="mt-4 flex flex-col items-start gap-4 sm:flex-row sm:items-center">
-        <div className="h-28 w-28 shrink-0 overflow-hidden rounded-2xl bg-slate-100 ring-1 ring-slate-200">
+    <div>
+      <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
+        <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-2xl bg-slate-100 ring-1 ring-slate-200">
           {displaySrc ? (
-            <img
-              src={displaySrc}
-              alt="Profile"
-              className="h-full w-full object-cover"
-            />
+            <img src={displaySrc} alt="Profile" className="h-full w-full object-cover" />
           ) : (
-            <div className="flex h-full w-full items-center justify-center text-xs text-slate-400">
-              No photo
+            <div className="flex h-full w-full items-center justify-center text-xs text-slate-400">No photo</div>
+          )}
+          {busy && (
+            <div className="absolute inset-0 flex items-center justify-center bg-white/70 backdrop-blur-sm">
+              <span className="h-6 w-6 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
             </div>
           )}
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <label className="cursor-pointer rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">
-            {uploading ? "Uploading…" : preview ? "Change photo" : "Upload photo"}
+          <label className={`cursor-pointer rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 ${busy ? "pointer-events-none opacity-60" : ""}`}>
+            {upload.isPending ? "Uploading…" : photoUrl ? "Change photo" : "Upload photo"}
             <input
               ref={inputRef}
               type="file"
-              accept="image/jpeg,image/png,image/webp,image/gif"
+              accept="image/jpeg,image/png,image/webp"
               className="sr-only"
-              disabled={uploading}
+              disabled={busy}
               onChange={handleFile}
             />
           </label>
-          {preview && (
+          {photoUrl && (
             <button
               type="button"
               onClick={clearPhoto}
-              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              disabled={busy}
+              className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
             >
               Remove
             </button>
@@ -126,8 +112,7 @@ export default function ArtistPhotoUpload({
 
       {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}
       <p className="mt-3 text-xs text-slate-400">
-        JPG, PNG or WebP · max 5 MB. Demo stores the image locally in your
-        browser.
+        JPG, PNG or WebP · max 5 MB. Shown on your public profile and in search.
       </p>
     </div>
   );

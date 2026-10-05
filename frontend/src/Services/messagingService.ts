@@ -27,21 +27,34 @@ export async function sendMessageApi(input: {
       body: input.body,
       senderName: input.senderName,
       attachment: input.attachment,
-    }
+    },
+    // Uploads with a 2 MB file can take a while on mobile data
+    { timeout: input.attachment ? 60000 : 20000 }
   );
   return data;
 }
 
+/** Open (or reuse) the chat for a booking — the server works out who's in it */
 export async function ensureConversationApi(input: {
   bookingId: string;
-  artistId: string;
-  artistName: string;
-  promoterId: string;
-  promoterName: string;
   initialMessage?: string;
 }): Promise<Conversation> {
   const { data } = await api.post<Conversation>("/messages/conversations", input);
   return data;
+}
+
+/** Fetch an attachment with the user's auth header and save it */
+export async function downloadAttachmentApi(attachment: MessageAttachment): Promise<void> {
+  const { data } = await api.get<Blob>(
+    `/messages/attachments/${encodeURIComponent(attachment.id!)}`,
+    { responseType: "blob", timeout: 60000 }
+  );
+  const url = URL.createObjectURL(data);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = attachment.name;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 export async function totalUnreadApi(): Promise<number> {

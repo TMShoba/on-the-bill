@@ -2,6 +2,7 @@ import { Router } from "express";
 import crypto from "crypto";
 import db from "../db.js";
 import { ensureContract, ensureReceipt } from "../lib/documents.js";
+import { notifyPaymentReceived } from "../lib/notify.js";
 
 const router = Router();
 
@@ -87,7 +88,12 @@ router.post("/payfast/itn", async (req, res) => {
       await ensureContract(row);
     }
     if (row) {
-      await ensureReceipt(row, nextPayment === "paid" ? "full" : "deposit");
+      const { receipt, created } = await ensureReceipt(
+        row,
+        nextPayment === "paid" ? "full" : "deposit",
+        "payfast"
+      );
+      if (created) await notifyPaymentReceived(row, receipt);
     }
     console.info(
       `[payfast/itn] Booking ${bookingId} marked ${nextPayment} (pf=${pf_payment_id}, amount=${amount_gross})`

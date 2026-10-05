@@ -9,6 +9,7 @@ function mapRowToUser(row) {
     role: row.role === "client" ? "promoter" : row.role,
     artistId: row.artist_id || null,
     createdAt: row.created_at,
+    emailNotifications: row.email_notifications === undefined ? true : Boolean(row.email_notifications),
   };
 }
 

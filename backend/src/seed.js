@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import db, { migrate } from "./db.js";
+import { DEMO_ADMIN_EMAIL } from "./lib/admin.js";
 
 async function seed() {
   await migrate();
@@ -145,7 +146,20 @@ await upsertUserRow({
   artist_id: null,
   created_at: now,
 });
-console.log("Seed: demo users ready (artist@ / promoter@  password Demo1234!)");
+// Demo verification reviewer — demo mode only (it has a well-known password and
+// would see ID documents). Admin rights also require ADMIN_EMAILS to list it.
+if (process.env.ALLOW_DEMO_TOKENS === "true" && process.env.NODE_ENV !== "production") {
+  await upsertUserRow({
+    id: "demo-admin-user-001",
+    name: "LineUp Reviewer",
+    email: DEMO_ADMIN_EMAIL,
+    password: passwordHash,
+    role: "client",
+    artist_id: null,
+    created_at: now,
+  });
+}
+console.log("Seed: demo users ready (artist@ / promoter@ / admin@  password Demo1234!)");
 
 // --- Sample bookings for simulation (upsert by fixed ids) ---
 const g1 = isoOffset(3);

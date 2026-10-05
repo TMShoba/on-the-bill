@@ -1,10 +1,12 @@
-import { useEffect, useState  } from "react";
+import { useCallback, useState } from "react";
 import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import type { Booking } from "../Types/Artist";
-import { getBankingDetails } from "../Services/artistProfileStore";
-import { downloadReceipt, getReceiptsForBooking } from "../Services/receiptStore";
-import { api } from "../Services/api";
-import { downloadContract, ensureContract, getContract } from "../Services/contractStore";
+import { getArtistBanking } from "../Services/artistProfileStore";
+import { useBookingDocuments } from "../Services/documentsService";
+import DocumentCard from "./documents/DocumentCard";
+import DocumentViewer from "./documents/DocumentViewer";
+import { documentsFromRows, type ViewerDocument } from "./documents/documentModel";
 
 type Props = {
   gig: Booking | null;
@@ -61,43 +63,44 @@ export default function GigDetailsModal({
   const [disputeReason, setDisputeReason] = useState("");
   const [termsOpen, setTermsOpen] = useState(false);
   const [termsAgreed, setTermsAgreed] = useState(false);
-  const [receiptTick, setReceiptTick] = useState(0);
+  // Refetch documents whenever the booking's status/payment changes
+  const { data: documents } = useBookingDocuments(
+    open ? gig?.id : undefined,
+    `${gig?.status}:${gig?.paymentStatus}`
+  );
+  const [viewing, setViewing] = useState<ViewerDocument | null>(null);
+  const closeViewer = useCallback(() => setViewing(null), []);
+  const docs =
+    gig && documents
+      ? documentsFromRows([
+          {
+            bookingId: gig.id,
+            artistName: gig.artistName,
+            promoterName: gig.promoterName || gig.clientName,
+            eventDate: gig.eventDate,
+            venue: gig.venue || "",
+            status: gig.status,
+            contract: documents.contract,
+            receipts: documents.receipts,
+          },
+        ])
+      : [];
 
-  const [receipts, setReceipts] = useState<ReturnType<typeof getReceiptsForBooking>>([]);
-  const [serverContract, setServerContract] = useState<{ bookingId: string; text: string; generatedAt: string } | null>(null);
-
-  useEffect(() => {
-    if (!gig) {
-      setReceipts([]);
-      setServerContract(null);
-      return;
-    }
-    let cancelled = false;
-    api
-      .get(`/documents/${gig.id}`)
-      .then(({ data }) => {
-        if (cancelled) return;
-        setReceipts(Array.isArray(data?.receipts) ? data.receipts : []);
-        setServerContract(data?.contract || null);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setReceipts(getReceiptsForBooking(gig.id));
-        setServerContract(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [gig, receiptTick]);
+  const bankingVisible = Boolean(
+    open &&
+      gig &&
+      showArtistBanking &&
+      (gig.status === "confirmed" || gig.status === "paid")
+  );
+  const { data: banking } = useQuery({
+    queryKey: ["artist-banking", gig?.artistId],
+    queryFn: () => getArtistBanking(gig!.artistId),
+    enabled: bankingVisible,
+  });
 
   if (!open || !gig) return null;
 
   const showActions = canRespond && gig.status === "pending" && onRespond;
-  const banking =
-    showArtistBanking &&
-    (gig.status === "confirmed" || gig.status === "paid")
-      ? getBankingDetails(gig.artistId)
-      : null;
   const payment =
     gig.paymentStatus || (gig.status === "paid" ? "paid" : "unpaid");
 
@@ -114,8 +117,6 @@ export default function GigDetailsModal({
 
   function handleMarkPaid(mode: "deposit" | "paid") {
     onMarkPaid?.(gig!.id, mode);
-    // allow receipts list to refresh after parent updates store
-    window.setTimeout(() => setReceiptTick((n) => n + 1), 50);
   }
 
   return (
@@ -196,78 +197,32 @@ export default function GigDetailsModal({
           )}
         </dl>
 
-        {/* —— Receipts —— */}
+        {/* —— Documents —— */}
         <section className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
           <div className="flex items-center justify-between gap-2">
-            <h3 className="text-sm font-bold text-slate-900">Receipts</h3>
-            <span className="text-[11px] font-medium text-slate-400">
-              Payment record for this booking
-            </span>
+            <h3 className="text-sm font-bold text-slate-900">Contract & receipts</h3>
+            <span className="text-[11px] font-medium text-slate-400">Shared with both sides</span>
           </div>
-          {(() => {
-            const contract =
-              serverContract ||
-              (gig.status === "confirmed" || gig.status === "paid"
-                ? ensureContract(gig)
-                : getContract(gig.id));
-            if (!contract) return null;
-            return (
-              <button
-                type="button"
-                onClick={() => downloadContract(contract)}
-                className="mt-3 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50"
-              >
-                Download contract
-              </button>
-            );
-          })()}
-          {receipts.length === 0 ? (
+          {docs.length === 0 ? (
             <p className="mt-2 text-xs leading-relaxed text-slate-500">
-              No receipts yet. When a deposit or full payment is marked paid,
-              a receipt appears here for both sides.
+              The contract appears once the booking is accepted, and a receipt for each
+              payment that's recorded.
             </p>
           ) : (
-            <ul className="mt-3 space-y-2">
-              {receipts.map((r) => (
-                <li
-                  key={r.id}
-                  className="rounded-xl border border-white bg-white px-3 py-2.5 text-sm shadow-sm"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-semibold capitalize text-slate-900">
-                      {r.kind} payment
-                    </span>
-                    <span className="font-bold text-emerald-700">
-                      R{r.amount.toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-500">
-                    <span className="capitalize">{r.status}</span>
-                    <span className="uppercase">{r.method}</span>
-                    <span>
-                      {r.paidAt
-                        ? new Date(r.paidAt).toLocaleString()
-                        : new Date(r.createdAt).toLocaleString()}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-[11px] text-slate-400">
-                    Platform fee R{r.platformFee.toLocaleString()} · Artist
-                    payout R{r.artistPayout.toLocaleString()}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => downloadReceipt(r)}
-                    className="mt-2 text-[11px] font-semibold text-emerald-700 hover:underline"
-                  >
-                    Download receipt
-                  </button>
-                </li>
+            <div className="mt-3 space-y-2">
+              {docs.map((d) => (
+                <DocumentCard
+                  key={d.kind === "contract" ? "contract" : d.receipt.id}
+                  doc={d}
+                  compact
+                  onView={setViewing}
+                />
               ))}
-            </ul>
+            </div>
           )}
         </section>
 
-        {banking && (
+        {bankingVisible && banking && (
           <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4 text-sm">
             <p className="font-bold text-emerald-900">Artist banking (EFT)</p>
             <p className="mt-1 text-emerald-900/80">
@@ -479,6 +434,7 @@ export default function GigDetailsModal({
           Close
         </button>
       </div>
+      <DocumentViewer doc={viewing} onClose={closeViewer} />
     </div>
   );
 }

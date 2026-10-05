@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import axios from "axios";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import MessagesPanel from "../../components/Messages/MessagesPanel";
 import CountUp from "../../components/animations/CountUp";
@@ -14,11 +15,7 @@ import type { Booking } from "../../Types/Artist";
 import GigDetailsModal from "../../components/GigDetailsModal";
 import BookingDocuments from "../../components/BookingDocuments";
 import GigCalendar from "../../components/GigCalendar";
-import {
-  getFavorites,
-  removeFavorite,
-  type SavedArtist,
-} from "../../Services/favoritesStore";
+import { useFavorites, useToggleFavorite } from "../../Services/favoritesStore";
 import { resolveArtistImage } from "../../utils/imageCdn";
 
 export default function PromoterDashboard() {
@@ -35,7 +32,8 @@ export default function PromoterDashboard() {
   }, [searchParams]);
   const [selected, setSelected] = useState<Booking | null>(null);
   const [tick, setTick] = useState(0);
-  const [favorites, setFavorites] = useState<SavedArtist[]>([]);
+  const { data: favorites = [], refetch: refetchFavorites } = useFavorites(user?.id);
+  const toggleFavorite = useToggleFavorite(user?.id);
 
   const [gigs, setGigs] = useState<Booking[]>([]);
 
@@ -73,12 +71,8 @@ export default function PromoterDashboard() {
   }, []);
 
   useEffect(() => {
-    if (user) setFavorites(getFavorites(user.id));
-  }, [user, tick]);
-
-  function refreshFavorites() {
-    if (user) setFavorites(getFavorites(user.id));
-  }
+    if (tick > 0) refetchFavorites();
+  }, [tick, refetchFavorites]);
 
   return (
     <div className="mx-auto max-w-6xl px-3 py-5 sm:px-6 sm:py-8">
@@ -158,7 +152,7 @@ export default function PromoterDashboard() {
                       {a.genre} · {a.location}
                     </p>
                     <p className="text-xs font-semibold text-emerald-600">
-                      R{a.rate.toLocaleString()}+
+                      {a.rate != null ? `R${a.rate.toLocaleString()}+` : "Price on request"}
                     </p>
                   </div>
                 </Link>
@@ -166,10 +160,7 @@ export default function PromoterDashboard() {
                   type="button"
                   title="Remove from saved"
                   onClick={() => {
-                    if (user) {
-                      removeFavorite(user.id, a.id);
-                      refreshFavorites();
-                    }
+                    if (user) toggleFavorite.mutate({ artist: a, save: false });
                   }}
                   className="rounded-lg p-2 text-rose-500 hover:bg-rose-50"
                 >
@@ -293,14 +284,28 @@ export default function PromoterDashboard() {
         showArtistBanking
         canManagePayment
         onMarkPaid={async (id, mode) => {
-          const updated = await markBookingPaidAsync(id, mode);
-          setTick((t) => t + 1);
-          if (updated) setSelected(updated);
+          try {
+            const updated = await markBookingPaidAsync(id, mode);
+            setTick((t) => t + 1);
+            if (updated) setSelected(updated);
+          } catch (e) {
+            window.alert(
+              (axios.isAxiosError(e) && e.response?.data?.message) ||
+                "Could not update this booking. Please try again."
+            );
+          }
         }}
         onDispute={async (id, reason) => {
-          const updated = await openBookingDisputeAsync(id, reason);
-          setTick((t) => t + 1);
-          if (updated) setSelected(updated);
+          try {
+            const updated = await openBookingDisputeAsync(id, reason);
+            setTick((t) => t + 1);
+            if (updated) setSelected(updated);
+          } catch (e) {
+            window.alert(
+              (axios.isAxiosError(e) && e.response?.data?.message) ||
+                "Could not update this booking. Please try again."
+            );
+          }
         }}
       />
     </div>

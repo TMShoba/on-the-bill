@@ -1,73 +1,69 @@
-import type { Artist } from "../Types/Artist";
-
-const KEY = "otb_favorites";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { api } from "./api";
 
 export type SavedArtist = {
   id: string;
   stageName: string;
   genre: string;
   location: string;
-  rate: number;
+  rate: number | null;
   imageUrl: string;
   savedAt: string;
 };
 
-function readMap(): Record<string, SavedArtist[]> {
-  try {
-    const raw = localStorage.getItem(KEY);
-    return raw ? (JSON.parse(raw) as Record<string, SavedArtist[]>) : {};
-  } catch {
-    return {};
-  }
+export function favoritesQueryKey(userId: string | undefined) {
+  return ["favorites", userId] as const;
 }
 
-function writeMap(map: Record<string, SavedArtist[]>) {
-  localStorage.setItem(KEY, JSON.stringify(map));
+export async function getFavorites(): Promise<SavedArtist[]> {
+  const { data } = await api.get<SavedArtist[]>("/favorites");
+  return Array.isArray(data) ? data : [];
 }
 
-export function getFavorites(userId: string): SavedArtist[] {
-  const map = readMap();
-  return (map[userId] || []).sort((a, b) =>
-    b.savedAt.localeCompare(a.savedAt)
-  );
+export async function addFavorite(artistId: string): Promise<void> {
+  await api.put(`/favorites/${encodeURIComponent(artistId)}`);
 }
 
-export function isFavorite(userId: string, artistId: string): boolean {
-  return getFavorites(userId).some((a) => a.id === artistId);
+export async function removeFavorite(artistId: string): Promise<void> {
+  await api.delete(`/favorites/${encodeURIComponent(artistId)}`);
 }
 
-export function toggleFavorite(
-  userId: string,
-  artist: Pick<
-    Artist,
-    "id" | "stageName" | "genre" | "location" | "rate" | "imageUrl"
-  >
-): boolean {
-  const map = readMap();
-  const list = map[userId] || [];
-  const idx = list.findIndex((a) => a.id === artist.id);
-  if (idx >= 0) {
-    list.splice(idx, 1);
-    map[userId] = list;
-    writeMap(map);
-    return false;
-  }
-  list.unshift({
-    id: artist.id,
-    stageName: artist.stageName,
-    genre: artist.genre,
-    location: artist.location,
-    rate: artist.rate,
-    imageUrl: artist.imageUrl,
-    savedAt: new Date().toISOString(),
+/** Saved artists for the signed-in user (one shared query for every card on the page). */
+export function useFavorites(userId: string | undefined) {
+  return useQuery({
+    queryKey: favoritesQueryKey(userId),
+    queryFn: getFavorites,
+    enabled: Boolean(userId),
   });
-  map[userId] = list;
-  writeMap(map);
-  return true;
 }
 
-export function removeFavorite(userId: string, artistId: string): void {
-  const map = readMap();
-  map[userId] = (map[userId] || []).filter((a) => a.id !== artistId);
-  writeMap(map);
+/**
+ * Save / unsave an artist. Updates the cached list optimistically and
+ * rolls back if the API call fails.
+ */
+export function useToggleFavorite(userId: string | undefined) {
+  const qc = useQueryClient();
+  const key = favoritesQueryKey(userId);
+
+  return useMutation({
+    mutationFn: async (input: { artist: Omit<SavedArtist, "savedAt">; save: boolean }) => {
+      if (input.save) await addFavorite(input.artist.id);
+      else await removeFavorite(input.artist.id);
+    },
+    onMutate: async ({ artist, save }) => {
+      await qc.cancelQueries({ queryKey: key });
+      const prev = qc.getQueryData<SavedArtist[]>(key);
+      qc.setQueryData<SavedArtist[]>(key, (list = []) => {
+        const without = list.filter((a) => a.id !== artist.id);
+        return save
+          ? [{ ...artist, savedAt: new Date().toISOString() }, ...without]
+          : without;
+      });
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(key, ctx.prev);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: key }),
+  });
 }

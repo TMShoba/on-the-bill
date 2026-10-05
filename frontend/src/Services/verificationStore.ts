@@ -1,4 +1,6 @@
-/** Demo artist identity + claim verification (localStorage). */
+/** Artist identity + claim verification (stored on the API). */
+import { useQuery } from "@tanstack/react-query";
+import { api } from "./api";
 
 export type ClaimType = "self" | "manager" | "";
 
@@ -16,9 +18,8 @@ export type VerificationRecord = {
   claimType: ClaimType;
   legalName: string;
   idNumberLast4: string;
-  /** Demo: filename or "selfie-captured" */
-  idDocLabel: string;
-  selfieLabel: string;
+  hasIdDocument: boolean;
+  hasSelfie: boolean;
   /** Manager-only */
   authorityNote: string;
   socialProofUrl: string;
@@ -26,127 +27,54 @@ export type VerificationRecord = {
   submittedAt?: string;
   reviewedAt?: string;
   rejectionReason?: string;
-  notes?: string;
 };
 
-const KEY = "otb_artist_verification_";
+export type VerificationInput = {
+  claimType: ClaimType;
+  legalName: string;
+  /** Full 13-digit SA ID — sent once over HTTPS; the server keeps only the last 4 + a hash */
+  idNumber: string;
+  /** data: URLs; optional when resubmitting with documents already on file */
+  idDocument?: string;
+  selfie?: string;
+  authorityNote?: string;
+  socialProofUrl?: string;
+};
 
-function empty(userId: string): VerificationRecord {
-  return {
-    userId,
-    claimType: "",
-    legalName: "",
-    idNumberLast4: "",
-    idDocLabel: "",
-    selfieLabel: "",
-    authorityNote: "",
-    socialProofUrl: "",
-    status: "unverified",
-  };
+export function verificationQueryKey(userId: string | undefined) {
+  return ["verification", userId] as const;
 }
 
-export function getVerification(userId: string): VerificationRecord {
-  try {
-    const raw = localStorage.getItem(`${KEY}${userId}`);
-    if (!raw) return empty(userId);
-    return { ...empty(userId), ...(JSON.parse(raw) as VerificationRecord) };
-  } catch {
-    return empty(userId);
-  }
+export async function fetchMyVerification(): Promise<VerificationRecord> {
+  const { data } = await api.get<VerificationRecord>("/verification/me");
+  return data;
 }
 
-export function saveVerification(
-  userId: string,
-  patch: Partial<VerificationRecord>
-): VerificationRecord {
-  const next = { ...getVerification(userId), ...patch, userId };
-  localStorage.setItem(`${KEY}${userId}`, JSON.stringify(next));
-  return next;
+/** Submit details; the server reviews them and returns the updated record. */
+export async function submitVerification(
+  input: VerificationInput
+): Promise<VerificationRecord> {
+  const { data } = await api.post<VerificationRecord>("/verification", input, { timeout: 90000 });
+  return data;
 }
 
-/** True once identity step has passed (can accept bookings in demo). */
-export function isIdentityVerified(userId: string): boolean {
-  const s = getVerification(userId).status;
-  return s === "identity_verified" || s === "fully_verified";
+/** Demo environments only (server rejects when ALLOW_DEMO_TOKENS is off). */
+export async function demoApproveFully(): Promise<VerificationRecord> {
+  const { data } = await api.post<VerificationRecord>("/verification/demo-approve");
+  return data;
 }
 
-/** Full claim verified (self or confirmed manager). */
-export function isFullyVerified(userId: string): boolean {
-  return getVerification(userId).status === "fully_verified";
-}
-
-/**
- * Demo review: auto-approve when minimum fields are present.
- * In production this would be a KYC provider + human review.
- */
-export function submitVerification(
-  userId: string,
-  input: {
-    claimType: ClaimType;
-    legalName: string;
-    idNumberLast4: string;
-    idDocLabel: string;
-    selfieLabel: string;
-    authorityNote?: string;
-    socialProofUrl?: string;
-    artistProfileId?: string;
-  }
-): VerificationRecord {
-  const now = new Date().toISOString();
-  saveVerification(userId, {
-    ...input,
-    authorityNote: input.authorityNote || "",
-    socialProofUrl: input.socialProofUrl || "",
-    status: "pending_review",
-    submittedAt: now,
-    rejectionReason: undefined,
-  });
-
-  // Demo auto-review after "submission"
-  const hasId =
-    Boolean(input.legalName.trim()) &&
-    input.idNumberLast4.replace(/\D/g, "").length >= 4 &&
-    Boolean(input.idDocLabel) &&
-    Boolean(input.selfieLabel);
-  const claimOk =
-    input.claimType === "self" ||
-    (input.claimType === "manager" &&
-      Boolean((input.authorityNote || "").trim().length > 10));
-
-  if (!hasId || !input.claimType || !claimOk) {
-    return saveVerification(userId, {
-      status: "rejected",
-      reviewedAt: now,
-      rejectionReason:
-        "Missing ID details, selfie, or manager authority note. Please complete all fields.",
-    });
-  }
-
-  // Identity always verified when docs present; full when claim + social proof
-  const full =
-    claimOk &&
-    (input.claimType === "self" ||
-      Boolean((input.socialProofUrl || "").trim()) ||
-      Boolean((input.authorityNote || "").trim().length > 20));
-
-  return saveVerification(userId, {
-    status: full ? "fully_verified" : "identity_verified",
-    reviewedAt: now,
-    rejectionReason: undefined,
+/** The signed-in artist's own verification record. */
+export function useMyVerification(userId: string | undefined) {
+  return useQuery({
+    queryKey: verificationQueryKey(userId),
+    queryFn: fetchMyVerification,
+    enabled: Boolean(userId),
   });
 }
 
-/** Demo helper: approve current pending as fully verified */
-export function demoApproveFully(userId: string): VerificationRecord {
-  return saveVerification(userId, {
-    status: "fully_verified",
-    reviewedAt: new Date().toISOString(),
-    rejectionReason: undefined,
-  });
-}
-
-export function clearVerification(userId: string): void {
-  localStorage.removeItem(`${KEY}${userId}`);
+export function isIdentityVerifiedStatus(status: VerificationStatus | undefined): boolean {
+  return status === "identity_verified" || status === "fully_verified";
 }
 
 export function verificationLabel(status: VerificationStatus): string {
@@ -162,4 +90,45 @@ export function verificationLabel(status: VerificationStatus): string {
     default:
       return "Not verified";
   }
+}
+
+/* ------------------------------ Admin review ------------------------------ */
+
+export type ReviewItem = VerificationRecord & {
+  dateOfBirth?: string;
+  reviewNotes?: string;
+  reviewedBy?: string;
+  accountName: string;
+  accountEmail: string;
+  stageName?: string;
+};
+
+export type ReviewDecision = "approve_identity" | "approve_full" | "reject";
+
+export async function fetchReviewQueue(
+  status: "pending_review" | "identity_verified" | "fully_verified" | "rejected"
+): Promise<ReviewItem[]> {
+  const { data } = await api.get<ReviewItem[]>("/verification/admin/queue", { params: { status } });
+  return Array.isArray(data) ? data : [];
+}
+
+/** Object URL for a submitted document (revoke it when done) */
+export async function fetchReviewFile(userId: string, kind: "id" | "selfie"): Promise<{ url: string; type: string }> {
+  const { data } = await api.get<Blob>(
+    `/verification/admin/${encodeURIComponent(userId)}/files/${kind}`,
+    { responseType: "blob", timeout: 60000 }
+  );
+  return { url: URL.createObjectURL(data), type: data.type };
+}
+
+export async function decideVerification(
+  userId: string,
+  decision: ReviewDecision,
+  reason?: string
+): Promise<ReviewItem> {
+  const { data } = await api.post<ReviewItem>(
+    `/verification/admin/${encodeURIComponent(userId)}/decision`,
+    { decision, reason }
+  );
+  return data;
 }

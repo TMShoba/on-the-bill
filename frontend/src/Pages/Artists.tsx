@@ -38,11 +38,18 @@ export default function Artists() {
     }
     const min = minRate ? Number(minRate) : null;
     const max = maxRate ? Number(maxRate) : null;
+    // Hidden prices ("on request") stay in the list; bands match on their range
     if (min !== null && !Number.isNaN(min)) {
-      list = list.filter((a) => a.rate >= min);
+      list = list.filter((a) => {
+        const top = a.rate ?? a.priceBand?.max;
+        return top == null || top >= min;
+      });
     }
     if (max !== null && !Number.isNaN(max)) {
-      list = list.filter((a) => a.rate <= max);
+      list = list.filter((a) => {
+        const bottom = a.rate ?? a.priceBand?.min;
+        return bottom == null || bottom <= max;
+      });
     }
     return list;
   }, [artists, genre, location, minRate, maxRate]);
@@ -229,7 +236,7 @@ export default function Artists() {
             {[1, 2, 3, 4].map((i) => (
               <div
                 key={i}
-                className="h-72 animate-pulse rounded-2xl bg-slate-200"
+                className="h-72 skeleton rounded-2xl"
               />
             ))}
           </div>

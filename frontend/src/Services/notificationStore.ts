@@ -1,3 +1,10 @@
+/**
+ * In-app notifications. The API creates them on booking requests, accept/decline,
+ * payments and new messages; the client only lists them and marks them read.
+ */
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { api } from "./api";
+
 export type NotificationType =
   | "booking_accepted"
   | "booking_declined"
@@ -16,160 +23,61 @@ export type AppNotification = {
   href?: string;
   createdAt: string;
   read: boolean;
-  /** Simulated email delivery flag for demo */
-  emailSent?: boolean;
 };
 
-const KEY = "otb_notifications";
+const POLL_MS = 20_000;
 
-function read(): AppNotification[] {
-  try {
-    const raw = localStorage.getItem(KEY);
-    return raw ? (JSON.parse(raw) as AppNotification[]) : [];
-  } catch {
-    return [];
-  }
+export function notificationsQueryKey(userId: string | undefined) {
+  return ["notifications", userId] as const;
 }
 
-function write(list: AppNotification[]) {
-  localStorage.setItem(KEY, JSON.stringify(list));
+export function notificationsUnreadQueryKey(userId: string | undefined) {
+  return ["notifications", userId, "unread"] as const;
 }
 
-export function getNotifications(userId: string): AppNotification[] {
-  return read()
-    .filter((n) => n.userId === userId)
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+export async function getNotifications(): Promise<AppNotification[]> {
+  const { data } = await api.get<AppNotification[]>("/notifications");
+  return Array.isArray(data) ? data : [];
 }
 
-export function getUnreadCount(userId: string): number {
-  return getNotifications(userId).filter((n) => !n.read).length;
+export async function getUnreadCount(): Promise<number> {
+  const { data } = await api.get<{ count: number }>("/notifications/unread-count");
+  return Number(data?.count || 0);
 }
 
-export function markNotificationRead(id: string): void {
-  const list = read().map((n) => (n.id === id ? { ...n, read: true } : n));
-  write(list);
+export async function markNotificationRead(id: string): Promise<void> {
+  await api.post(`/notifications/${encodeURIComponent(id)}/read`);
 }
 
-export function markAllNotificationsRead(userId: string): void {
-  const list = read().map((n) =>
-    n.userId === userId ? { ...n, read: true } : n
-  );
-  write(list);
+export async function markAllNotificationsRead(): Promise<void> {
+  await api.post("/notifications/read-all");
 }
 
-export function pushNotification(input: {
-  userId: string;
-  type: NotificationType;
-  title: string;
-  body: string;
-  href?: string;
-  /** Demo: pretend an email was also sent */
-  email?: boolean;
-}): AppNotification {
-  const n: AppNotification = {
-    id: crypto.randomUUID(),
-    userId: input.userId,
-    type: input.type,
-    title: input.title,
-    body: input.body,
-    href: input.href,
-    createdAt: new Date().toISOString(),
-    read: false,
-    emailSent: Boolean(input.email),
-  };
-  const list = read();
-  list.unshift(n);
-  // Cap store size for localStorage
-  write(list.slice(0, 100));
-  return n;
-}
-
-/** Notify promoter when artist accepts/declines; notify artist on new request */
-export function notifyBookingStatusChange(input: {
-  promoterId: string;
-  artistId: string;
-  artistName: string;
-  venue: string;
-  eventDate: string;
-  status: "confirmed" | "declined";
-}) {
-  const accepted = input.status === "confirmed";
-  pushNotification({
-    userId: input.promoterId,
-    type: accepted ? "booking_accepted" : "booking_declined",
-    title: accepted ? "Booking accepted" : "Booking declined",
-    body: accepted
-      ? `${input.artistName} accepted your request for ${input.venue} on ${input.eventDate}.`
-      : `${input.artistName} declined your request for ${input.venue} on ${input.eventDate}.`,
-    href: "/dashboard",
-    email: true,
+export function useNotifications(userId: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: notificationsQueryKey(userId),
+    queryFn: getNotifications,
+    enabled: Boolean(userId) && enabled,
+    refetchInterval: POLL_MS,
   });
 }
 
-export function notifyNewBookingRequest(input: {
-  artistId: string;
-  promoterName: string;
-  venue: string;
-  eventDate: string;
-}) {
-  pushNotification({
-    userId: input.artistId,
-    type: "booking_request",
-    title: "New booking request",
-    body: `${input.promoterName} wants to book you for ${input.venue} on ${input.eventDate}.`,
-    href: "/dashboard",
-    email: true,
+export function useNotificationUnreadCount(userId: string | undefined) {
+  return useQuery({
+    queryKey: notificationsUnreadQueryKey(userId),
+    queryFn: getUnreadCount,
+    enabled: Boolean(userId),
+    refetchInterval: POLL_MS,
   });
 }
 
-export function notifyNewMessage(input: {
-  recipientId: string;
-  senderName: string;
-  preview: string;
-}) {
-  pushNotification({
-    userId: input.recipientId,
-    type: "message",
-    title: `Message from ${input.senderName}`,
-    body: input.preview.slice(0, 120),
-    href: "/messages",
-    email: true,
+/** Mark one (id) or all (no id) notifications read, then refresh list + badge. */
+export function useMarkNotificationsRead(userId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id?: string) =>
+      id ? markNotificationRead(id) : markAllNotificationsRead(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications", userId] }),
   });
 }
 
-export function notifyPaymentReceived(input: {
-  artistId: string;
-  promoterId: string;
-  amount: number;
-  venue: string;
-  kind: "deposit" | "full";
-}) {
-  const label = input.kind === "deposit" ? "Deposit" : "Payment";
-  const amt = `R${input.amount.toLocaleString()}`;
-  pushNotification({
-    userId: input.artistId,
-    type: "booking_paid",
-    title: `${label} received`,
-    body: `${label} of ${amt} for ${input.venue} was marked paid. (Email sent)`,
-    href: "/dashboard",
-    email: true,
-  });
-  pushNotification({
-    userId: input.promoterId,
-    type: "booking_paid",
-    title: `${label} confirmed`,
-    body: `Your ${label.toLowerCase()} of ${amt} for ${input.venue} is on record. Receipt is in the booking.`,
-    href: "/dashboard",
-    email: true,
-  });
-}
-
-/** Demo helper — surfaces that email would be sent for key events */
-export function describeEmailEvents(): string[] {
-  return [
-    "New booking request → email to artist",
-    "Booking accepted / declined → email to promoter",
-    "Deposit or full payment marked → email to both",
-    "New message → email to recipient",
-  ];
-}

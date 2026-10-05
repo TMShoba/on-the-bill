@@ -1,11 +1,14 @@
 import { useMemo, useState, type FormEvent } from "react";
 import {
-  getProfileExtras,
   getProfileStrength,
-  saveProfileExtras,
+  useMyArtistProfile,
+  useSaveProfileExtras,
+  type ArtistProfileExtras,
 } from "../Services/artistProfileStore";
+import { useAuth } from "../context/AuthContext";
 
 type Props = {
+  /** Used to find the locally stored profile photo */
   artistId: string;
   hasPublicBio?: boolean;
   /** Bump when photo/banking changes so the meter recalculates */
@@ -17,24 +20,40 @@ export default function ProfileStrengthMeter({
   hasPublicBio,
   refreshKey = 0,
 }: Props) {
-  const [extras, setExtras] = useState(() => getProfileExtras(artistId));
+  const { user } = useAuth();
+  const { data: profile } = useMyArtistProfile(user?.id);
+  const save = useSaveProfileExtras(user?.id);
+  const [extras, setExtras] = useState<ArtistProfileExtras>({});
   const [editing, setEditing] = useState(false);
-  const [tick, setTick] = useState(0);
+  const [error, setError] = useState("");
 
   const strength = useMemo(
-    () =>
-      getProfileStrength(artistId, {
-        hasPublicBio,
-      }),
+    () => getProfileStrength(profile, { artistId, hasPublicBio }),
+    // refreshKey: the photo lives in localStorage, so recompute when it changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [artistId, hasPublicBio, refreshKey, tick, extras]
+    [profile, artistId, hasPublicBio, refreshKey]
   );
 
-  function handleSave(e: FormEvent) {
+  function startEditing() {
+    setExtras(profile?.extras || {});
+    setError("");
+    setEditing(true);
+  }
+
+  async function handleSave(e: FormEvent) {
     e.preventDefault();
-    saveProfileExtras(artistId, extras);
-    setEditing(false);
-    setTick((t) => t + 1);
+    setError("");
+    try {
+      await save.mutateAsync({
+        bio: extras.bio || "",
+        demoMixUrl: extras.demoMixUrl || "",
+        phone: extras.phone || "",
+        instagram: extras.instagram || "",
+      });
+      setEditing(false);
+    } catch {
+      setError("Could not save your profile. Please try again.");
+    }
   }
 
   const color =
@@ -98,7 +117,7 @@ export default function ProfileStrengthMeter({
       {!editing ? (
         <button
           type="button"
-          onClick={() => setEditing(true)}
+          onClick={startEditing}
           className="mt-4 text-sm font-semibold text-emerald-700 hover:text-emerald-800"
         >
           Update bio, demo & contact →
@@ -161,12 +180,14 @@ export default function ProfileStrengthMeter({
               />
             </div>
           </div>
+          {error && <p className="text-sm text-rose-600">{error}</p>}
           <div className="flex gap-2">
             <button
               type="submit"
-              className="rounded-full bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
+              disabled={save.isPending}
+              className="rounded-full bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
             >
-              Save profile
+              {save.isPending ? "Saving…" : "Save profile"}
             </button>
             <button
               type="button"

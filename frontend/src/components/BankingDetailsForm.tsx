@@ -1,14 +1,18 @@
 import { useState, type FormEvent } from "react";
+import axios from "axios";
 import {
-  getBankingDetails,
-  saveBankingDetails,
+  useMyArtistProfile,
+  useSaveBankingDetails,
   type BankingDetails,
 } from "../Services/artistProfileStore";
-import { isIdentityVerified } from "../Services/verificationStore";
+import {
+  isIdentityVerifiedStatus,
+  useMyVerification,
+} from "../Services/verificationStore";
+import { useAuth } from "../context/AuthContext";
 import { Link } from "react-router-dom";
 
 type Props = {
-  artistId: string;
   onSaved?: () => void;
 };
 
@@ -21,28 +25,74 @@ const empty: BankingDetails = {
   referenceHint: "",
 };
 
-export default function BankingDetailsForm({ artistId, onSaved }: Props) {
-  const [form, setForm] = useState<BankingDetails>(
-    () => getBankingDetails(artistId) || empty
+export default function BankingDetailsForm({ onSaved }: Props) {
+  const { user } = useAuth();
+  const verification = useMyVerification(user?.id);
+  const profile = useMyArtistProfile(user?.id);
+
+  if (verification.isLoading || profile.isLoading) {
+    return (
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-500 shadow-sm sm:p-6">
+        Loading banking details…
+      </section>
+    );
+  }
+  if (profile.isError) {
+    return (
+      <section className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm text-rose-700 shadow-sm sm:p-6">
+        Could not load banking details. Please refresh and try again.
+      </section>
+    );
+  }
+  return (
+    <BankingForm
+      userId={user?.id}
+      initial={profile.data?.banking || null}
+      verified={isIdentityVerifiedStatus(verification.data?.status)}
+      onSaved={onSaved}
+    />
   );
+}
+
+function BankingForm({
+  userId,
+  initial,
+  verified,
+  onSaved,
+}: Props & {
+  userId: string | undefined;
+  initial: BankingDetails | null;
+  verified: boolean;
+}) {
+  const save = useSaveBankingDetails(userId);
+  const [form, setForm] = useState<BankingDetails>(() => initial || empty);
   const [saved, setSaved] = useState(false);
-  const [open, setOpen] = useState(() => !getBankingDetails(artistId));
+  const [error, setError] = useState("");
+  const [hasSaved, setHasSaved] = useState(Boolean(initial));
+  const [open, setOpen] = useState(() => !initial);
 
   function update<K extends keyof BankingDetails>(key: K, value: BankingDetails[K]) {
     setForm((f) => ({ ...f, [key]: value }));
     setSaved(false);
   }
 
-  function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    saveBankingDetails(artistId, form);
-    setSaved(true);
-    setOpen(false);
-    onSaved?.();
+    setError("");
+    try {
+      const profile = await save.mutateAsync(form);
+      if (profile.banking) setForm(profile.banking);
+      setSaved(true);
+      setHasSaved(true);
+      setOpen(false);
+      onSaved?.();
+    } catch (err) {
+      setError(
+        (axios.isAxiosError(err) && err.response?.data?.message) ||
+          "Could not save banking details. Please try again."
+      );
+    }
   }
-
-  const hasSaved = Boolean(getBankingDetails(artistId));
-  const verified = isIdentityVerified(artistId);
 
   if (!verified) {
     return (
@@ -180,16 +230,18 @@ export default function BankingDetailsForm({ artistId, onSaved }: Props) {
           </div>
 
           <p className="text-xs text-slate-500">
-            Demo stores this on your device only. In production it would be
-            encrypted server-side and never shown until a booking is confirmed.
+            Stored on The LineUp servers and only shown to a promoter once a
+            booking with you is confirmed.
           </p>
+          {error && <p className="text-sm text-rose-600">{error}</p>}
 
           <div className="flex flex-wrap gap-2">
             <button
               type="submit"
-              className="rounded-full bg-emerald-500 px-5 py-2.5 text-sm font-bold text-slate-950 shadow-md shadow-emerald-500/20 hover:bg-emerald-400 active:scale-95"
+              disabled={save.isPending}
+              className="rounded-full bg-emerald-500 disabled:opacity-60 px-5 py-2.5 text-sm font-bold text-slate-950 shadow-md shadow-emerald-500/20 hover:bg-emerald-400 active:scale-95"
             >
-              Save banking details
+              {save.isPending ? "Saving…" : "Save banking details"}
             </button>
             {hasSaved && (
               <button

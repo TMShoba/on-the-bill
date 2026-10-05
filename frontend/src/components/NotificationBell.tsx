@@ -1,11 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  getNotifications,
-  getUnreadCount,
-  markAllNotificationsRead,
-  markNotificationRead,
-  type AppNotification,
+  useMarkNotificationsRead,
+  useNotificationUnreadCount,
+  useNotifications,
 } from "../Services/notificationStore";
 import { useAuth } from "../context/AuthContext";
 
@@ -20,21 +18,11 @@ function timeAgo(iso: string) {
 export default function NotificationBell() {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
-  const [items, setItems] = useState<AppNotification[]>([]);
-  const [unread, setUnread] = useState(0);
   const panelRef = useRef<HTMLDivElement>(null);
-
-  function refresh() {
-    if (!user) return;
-    setItems(getNotifications(user.id));
-    setUnread(getUnreadCount(user.id));
-  }
-
-  useEffect(() => {
-    refresh();
-    const id = window.setInterval(refresh, 3000);
-    return () => window.clearInterval(id);
-  }, [user?.id]);
+  const { data: unread = 0 } = useNotificationUnreadCount(user?.id);
+  // Only load the full list while the panel is open
+  const { data: items = [] } = useNotifications(user?.id, open);
+  const markRead = useMarkNotificationsRead(user?.id);
 
   useEffect(() => {
     function onDoc(e: MouseEvent) {
@@ -57,7 +45,6 @@ export default function NotificationBell() {
         type="button"
         onClick={() => {
           setOpen((v) => !v);
-          refresh();
         }}
         className="relative rounded-lg p-2 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
         aria-label="Notifications"
@@ -100,8 +87,7 @@ export default function NotificationBell() {
               <button
                 type="button"
                 onClick={() => {
-                  markAllNotificationsRead(user.id);
-                  refresh();
+                  markRead.mutate(undefined);
                 }}
                 className="text-xs font-semibold text-emerald-700 hover:text-emerald-800"
               >
@@ -120,9 +106,8 @@ export default function NotificationBell() {
                   <Link
                     to={n.href || "/dashboard"}
                     onClick={() => {
-                      markNotificationRead(n.id);
+                      if (!n.read) markRead.mutate(n.id);
                       setOpen(false);
-                      refresh();
                     }}
                     className={`block border-b border-slate-50 px-4 py-3 transition hover:bg-slate-50 ${
                       !n.read ? "bg-emerald-50/40" : ""
@@ -139,11 +124,6 @@ export default function NotificationBell() {
                     <p className="mt-0.5 line-clamp-2 text-xs text-slate-600">
                       {n.body}
                     </p>
-                    {n.emailSent && (
-                      <p className="mt-1 text-[10px] font-medium text-slate-400">
-                        ✉ Email also sent
-                      </p>
-                    )}
                   </Link>
                 </li>
               ))

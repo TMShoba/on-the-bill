@@ -1,5 +1,6 @@
 import { Router } from "express";
-import nodemailer from "nodemailer";
+import db from "../db.js";
+import { emailEnabled, sendEmail } from "../lib/mailer.js";
 import { requireAuth } from "../middleware/auth.js";
 import { rateLimit } from "../lib/rateLimit.js";
 import {
@@ -10,23 +11,6 @@ import {
 import { audit } from "../lib/audit.js";
 
 const router = Router();
-
-const SMTP_CONFIGURED = Boolean(process.env.SMTP_HOST && process.env.SMTP_USER);
-
-const transporter = SMTP_CONFIGURED
-  ? nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT || 587),
-      secure: process.env.SMTP_SECURE === "true",
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-    })
-  : null;
-
-const FROM_ADDRESS =
-  process.env.SMTP_FROM || "The LineUp <no-reply@thelineup.co.za>";
 
 const ALLOWED_TEMPLATES = new Set([
   "booking_request",
@@ -94,20 +78,82 @@ router.post("/email", requireAuth, emailLimiter, async (req, res) => {
     sanitizeString(req.body?.subject, 120) || SUBJECTS[template](data);
   const text = BODIES[template](data);
 
-  if (!transporter) {
-    console.info(`[email:not-configured] Would send "${template}" to (redacted)`);
+  if (!emailEnabled) {
     audit("email_logged_only", { template, userId: req.user?.id });
     return res.json({ sent: false, reason: "SMTP not configured on server" });
   }
 
+  const result = await sendEmail({ to, subject, text });
+  audit(result.sent ? "email_sent" : "email_fail", { template, userId: req.user?.id });
+  if (!result.sent) return res.status(502).json({ message: "Failed to send email" });
+  res.json({ sent: true });
+});
+
+function mapNotification(row) {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    type: row.type,
+    title: row.title,
+    body: row.body || "",
+    href: row.href || undefined,
+    createdAt: row.created_at,
+    read: Boolean(row.read_flag),
+  };
+}
+
+// GET /api/notifications — latest in-app notifications for the signed-in user
+router.get("/", requireAuth, async (req, res) => {
   try {
-    await transporter.sendMail({ from: FROM_ADDRESS, to, subject, text });
-    audit("email_sent", { template, userId: req.user?.id });
-    res.json({ sent: true });
-  } catch (err) {
-    console.error("Email send failed:", err.message);
-    audit("email_fail", { template, userId: req.user?.id });
-    res.status(502).json({ message: "Failed to send email" });
+    const rows = await db
+      .prepare(
+        `SELECT * FROM notifications WHERE user_id = ?
+         ORDER BY created_at DESC LIMIT 100`
+      )
+      .all(req.user.id);
+    res.json(rows.map(mapNotification));
+  } catch (e) {
+    console.error("list notifications", e);
+    res.status(500).json({ message: "Failed to load notifications" });
+  }
+});
+
+// GET /api/notifications/unread-count
+router.get("/unread-count", requireAuth, async (req, res) => {
+  try {
+    const row = await db
+      .prepare("SELECT COUNT(*) AS n FROM notifications WHERE user_id = ? AND read_flag = 0")
+      .get(req.user.id);
+    res.json({ count: Number(row?.n || 0) });
+  } catch (e) {
+    console.error("notification count", e);
+    res.status(500).json({ message: "Failed to load notification count" });
+  }
+});
+
+// POST /api/notifications/read-all
+router.post("/read-all", requireAuth, async (req, res) => {
+  try {
+    await db
+      .prepare("UPDATE notifications SET read_flag = 1 WHERE user_id = ? AND read_flag = 0")
+      .run(req.user.id);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("read-all notifications", e);
+    res.status(500).json({ message: "Failed to update notifications" });
+  }
+});
+
+// POST /api/notifications/:id/read
+router.post("/:id/read", requireAuth, async (req, res) => {
+  try {
+    await db
+      .prepare("UPDATE notifications SET read_flag = 1 WHERE id = ? AND user_id = ?")
+      .run(req.params.id, req.user.id);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("read notification", e);
+    res.status(500).json({ message: "Failed to update notification" });
   }
 });
 

@@ -1,7 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { getUnreadCount } from "../Services/notificationStore";
-import { useEffect, useState } from "react";
+import { useNotificationUnreadCount } from "../Services/notificationStore";
 import { useQuery } from "@tanstack/react-query";
 import { mockMessagingApi } from "../Services/mockMessagingApi";
 
@@ -41,7 +40,7 @@ function MsgIcon() {
 
 export default function MobileBottomNav() {
   const { user, isAuthenticated } = useAuth();
-  const [notifUnread, setNotifUnread] = useState(0);
+  const { data: notifUnread = 0 } = useNotificationUnreadCount(user?.id);
 
   const { data: msgUnread = 0 } = useQuery({
     queryKey: ["unread", user?.id],
@@ -49,14 +48,6 @@ export default function MobileBottomNav() {
     enabled: Boolean(user),
     refetchInterval: 5000,
   });
-
-  useEffect(() => {
-    if (!user) return;
-    const tick = () => setNotifUnread(getUnreadCount(user.id));
-    tick();
-    const id = window.setInterval(tick, 3000);
-    return () => window.clearInterval(id);
-  }, [user?.id]);
 
   if (!isAuthenticated) return null;
 

@@ -1,7 +1,5 @@
-import { recordSuccessfulGig } from "./reputationStore";
-import { notifyPaymentReceived } from "./notificationStore";
-import type { Booking } from "../Types/Artist";
-import { createReceipt } from "./receiptStore";
+import axios from "axios";
+import type { Booking, TravelRequirements } from "../Types/Artist";
 import {
   createBooking as apiCreateBooking,
   getBookings as apiGetBookings,
@@ -10,10 +8,6 @@ import {
   openBookingDisputeApi,
   updateBookingReminderApi,
 } from "./bookingService";
-import {
-  notifyBookingStatusChange,
-  notifyNewBookingRequest,
-} from "./notificationStore";
 
 const GIGS_KEY = "otb_demo_gigs";
 
@@ -214,14 +208,6 @@ export function addPromoterBooking(input: {
     createdAt: new Date().toISOString(),
   };
   upsertDemoGig(gig);
-
-  notifyNewBookingRequest({
-    artistId: gig.artistId,
-    promoterName: gig.promoterName || gig.clientName,
-    venue: gig.venue || "an event",
-    eventDate: gig.eventDate,
-  });
-
   return gig;
 }
 
@@ -241,20 +227,6 @@ export function updateBookingStatus(
       status === "confirmed" ? prev.paymentStatus || "unpaid" : prev.paymentStatus,
   };
   writeGigs(gigs);
-
-  const promoterId =
-    prev.clientEmail === DEMO_PROMOTER.email
-      ? DEMO_PROMOTER.id
-      : prev.clientEmail;
-  notifyBookingStatusChange({
-    promoterId,
-    artistId: prev.artistId,
-    artistName: prev.artistName,
-    venue: prev.venue || "your event",
-    eventDate: prev.eventDate,
-    status,
-  });
-
   return gigs[idx];
 }
 
@@ -277,40 +249,6 @@ export function markBookingPaid(
     disputedAt: undefined,
   };
   writeGigs(gigs);
-  if (mode === "paid" || mode === "deposit") {
-    try {
-      const amount = prev.fee || 0;
-      const payAmt = mode === "deposit" ? Math.round(amount * 0.3) : amount;
-      createReceipt({
-        bookingId: prev.id,
-        artistId: prev.artistId,
-        artistName: prev.artistName,
-        promoterName: prev.promoterName || prev.clientName,
-        promoterEmail: prev.clientEmail,
-        amount: payAmt,
-        platformFee: Math.round(payAmt * 0.05),
-        artistPayout: Math.round(payAmt * 0.95),
-        kind: mode === "deposit" ? "deposit" : "full",
-        method: "manual",
-        status: "paid",
-        paidAt: new Date().toISOString(),
-      });
-      if (mode === "paid") recordSuccessfulGig(prev.artistId);
-      const promoterId =
-        prev.clientEmail === DEMO_PROMOTER.email
-          ? DEMO_PROMOTER.id
-          : prev.clientEmail;
-      notifyPaymentReceived({
-        artistId: prev.artistId,
-        promoterId,
-        amount: prev.fee || 0,
-        venue: prev.venue || "your event",
-        kind: mode === "deposit" ? "deposit" : "full",
-      });
-    } catch {
-      /* ignore */
-    }
-  }
   return gigs[idx];
 }
 
@@ -333,6 +271,14 @@ export function openBookingDispute(
   return gigs[idx];
 }
 
+
+/**
+ * Only fall back to the local store when the API is unreachable. A real
+ * response (e.g. 403 "verify first") must reach the user, not be bypassed.
+ */
+function isApiUnreachable(e: unknown): boolean {
+  return axios.isAxiosError(e) && !e.response;
+}
 
 /** Prefer server bookings; merge with local so an empty API response never wipes the UI */
 export async function loadBookingsForUser(): Promise<Booking[]> {
@@ -369,6 +315,9 @@ export async function addPromoterBookingAsync(input: {
   message?: string;
   clientName?: string;
   clientEmail?: string;
+  eventCountry?: string;
+  eventTimezone?: string;
+  travel?: TravelRequirements;
 }): Promise<Booking> {
   try {
     const created = await apiCreateBooking({
@@ -384,10 +333,14 @@ export async function addPromoterBookingAsync(input: {
       fee: input.fee,
       promoterName: input.clientName || DEMO_PROMOTER.name,
       notes: input.message,
+      eventCountry: input.eventCountry,
+      eventTimezone: input.eventTimezone,
+      travel: input.travel,
     });
     upsertDemoGig(created);
     return created;
   } catch (e) {
+    if (!isApiUnreachable(e)) throw e;
     console.warn("createBooking API failed, local fallback", e);
     return addPromoterBooking(input);
   }
@@ -402,6 +355,7 @@ export async function updateBookingStatusAsync(
     upsertDemoGig(updated);
     return updated;
   } catch (e) {
+    if (!isApiUnreachable(e)) throw e;
     console.warn("updateBookingStatus API failed, local fallback", e);
     return updateBookingStatus(gigId, status);
   }
@@ -419,6 +373,7 @@ export async function markBookingPaidAsync(
     upsertDemoGig(updated);
     return updated;
   } catch (e) {
+    if (!isApiUnreachable(e)) throw e;
     console.warn("markBookingPaid API failed, local fallback", e);
     return markBookingPaid(gigId, mode);
   }
@@ -433,6 +388,7 @@ export async function openBookingDisputeAsync(
     upsertDemoGig(updated);
     return updated;
   } catch (e) {
+    if (!isApiUnreachable(e)) throw e;
     console.warn("dispute API failed, local fallback", e);
     return openBookingDispute(gigId, reason);
   }
@@ -447,6 +403,7 @@ export async function toggleReminderAsync(
     upsertDemoGig(updated);
     return updated;
   } catch (e) {
+    if (!isApiUnreachable(e)) throw e;
     console.warn("reminder API failed, local fallback", e);
     return toggleReminder(gigId, value);
   }

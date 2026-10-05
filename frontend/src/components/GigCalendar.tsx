@@ -6,6 +6,7 @@ const STATUS_COLOR: Record<BookingStatus, string> = {
   pending: "bg-amber-400",
   declined: "bg-rose-400",
   paid: "bg-sky-500",
+  blocked: "bg-slate-400",
 };
 
 type Props = {
@@ -99,6 +100,8 @@ export default function GigCalendar({ gigs, onSelectDay, onSelectGig }: Props) {
           }
           const key = toKey(year, month, day);
           const dayGigs = byDate.get(key) || [];
+          const blocked = dayGigs.some((g) => g.status === "blocked");
+          const realGigs = dayGigs.filter((g) => g.status !== "blocked");
           const isToday =
             key ===
             `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}-${String(new Date().getDate()).padStart(2, "0")}`;
@@ -109,18 +112,20 @@ export default function GigCalendar({ gigs, onSelectDay, onSelectGig }: Props) {
               type="button"
               onClick={() => {
                 onSelectDay(key, dayGigs);
-                if (dayGigs.length === 1 && onSelectGig) onSelectGig(dayGigs[0]);
+                // A blocked day isn't a gig, so never open the gig view for it
+                if (realGigs.length === 1 && !blocked && onSelectGig) onSelectGig(realGigs[0]);
               }}
+              title={blocked ? "Unavailable" : undefined}
               className={`flex aspect-square flex-col items-center justify-start rounded-xl border p-1 text-sm transition hover:border-slate-400 hover:bg-slate-50 ${
                 isToday
                   ? "border-slate-900 bg-slate-50 font-semibold"
                   : "border-transparent"
-              }`}
+              } ${blocked ? "bg-[repeating-linear-gradient(135deg,#f1f5f9_0_6px,#e2e8f0_6px_8px)]" : ""}`}
             >
-              <span className="text-slate-800">{day}</span>
-              {dayGigs.length > 0 && (
+              <span className={blocked ? "text-slate-400 line-through" : "text-slate-800"}>{day}</span>
+              {realGigs.length > 0 && (
                 <div className="mt-auto flex flex-wrap justify-center gap-0.5 pb-0.5">
-                  {dayGigs.slice(0, 3).map((g) => (
+                  {realGigs.slice(0, 3).map((g) => (
                     <span
                       key={g.id}
                       className={`h-1.5 w-1.5 rounded-full ${STATUS_COLOR[g.status]}`}
@@ -143,6 +148,9 @@ export default function GigCalendar({ gigs, onSelectDay, onSelectGig }: Props) {
         </span>
         <span className="flex items-center gap-1.5">
           <span className="h-2 w-2 rounded-full bg-rose-400" /> Declined
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-sm bg-[repeating-linear-gradient(135deg,#f1f5f9_0_2px,#cbd5e1_2px_3px)] ring-1 ring-slate-300" /> Unavailable
         </span>
       </div>
     </div>

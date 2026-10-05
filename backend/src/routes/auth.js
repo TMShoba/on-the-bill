@@ -47,7 +47,7 @@ router.post("/register", authLimiter, async (req, res) => {
     const pwErr = validatePassword(password);
     if (pwErr) return res.status(400).json({ message: pwErr });
 
-    const exists = db
+    const exists = await db
       .prepare("SELECT id FROM users WHERE LOWER(email) = LOWER(?)")
       .get(emailNorm);
     if (exists) {
@@ -94,7 +94,7 @@ router.post("/login", authLimiter, async (req, res) => {
         .json({ message: "email and password are required" });
     }
 
-    const row = db
+    const row = await db
       .prepare("SELECT * FROM users WHERE LOWER(email) = LOWER(?)")
       .get(emailNorm);
 

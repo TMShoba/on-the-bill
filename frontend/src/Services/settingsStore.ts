@@ -1,3 +1,6 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { api } from "./api";
+
 export type UserSettings = {
   emailNotifications: boolean;
   reminderDefaultOptIn: boolean;
@@ -35,4 +38,31 @@ export function clearLocalDemoData() {
     if (key && !keepKeys.has(key)) keysToRemove.push(key);
   }
   keysToRemove.forEach((k) => localStorage.removeItem(k));
+}
+
+/** Email notifications live on the server (the API sends the emails) */
+export function useEmailNotifications(userId: string | undefined) {
+  const qc = useQueryClient();
+  const key = ["settings", userId];
+  const query = useQuery({
+    queryKey: key,
+    queryFn: async () => (await api.get<{ emailNotifications: boolean }>("/settings")).data,
+    enabled: Boolean(userId),
+  });
+  const mutation = useMutation({
+    mutationFn: async (emailNotifications: boolean) =>
+      (await api.patch<{ emailNotifications: boolean }>("/settings", { emailNotifications })).data,
+    onMutate: async (value) => {
+      const prev = qc.getQueryData(key);
+      qc.setQueryData(key, { emailNotifications: value });
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => qc.setQueryData(key, ctx?.prev),
+    onSuccess: (data) => qc.setQueryData(key, data),
+  });
+  return {
+    enabled: query.data?.emailNotifications ?? true,
+    loading: query.isLoading,
+    setEnabled: (value: boolean) => mutation.mutate(value),
+  };
 }

@@ -3,6 +3,7 @@ import { Router } from "express";
 import db from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { ensureContract, mapContract, mapReceipt } from "../lib/documents.js";
+import { renderContractPdf, renderReceiptPdf } from "../lib/pdf.js";
 
 const router = Router();
 
@@ -81,6 +82,56 @@ router.get("/:bookingId", requireAuth, async (req, res) => {
   } catch (e) {
     console.error("get documents", e);
     res.status(500).json({ message: "Failed to load documents" });
+  }
+});
+
+function sendPdf(res, buffer, filename) {
+  res.set("Content-Type", "application/pdf");
+  res.set("Cache-Control", "private, no-store");
+  res.attachment(filename);
+  res.send(buffer);
+}
+
+// GET /api/documents/:bookingId/contract.pdf
+router.get("/:bookingId/contract.pdf", requireAuth, async (req, res) => {
+  try {
+    const booking = await db.prepare("SELECT * FROM bookings WHERE id = ?").get(req.params.bookingId);
+    if (!booking) return res.status(404).json({ message: "Booking not found" });
+    if (!canAccess(req.user, booking)) return res.status(403).json({ message: "Not your booking" });
+    if (booking.status === "confirmed" || booking.status === "paid") await ensureContract(booking);
+    const contract = await db.prepare("SELECT * FROM booking_contracts WHERE booking_id = ?").get(booking.id);
+    if (!contract) {
+      return res.status(404).json({ message: "The contract is created when the artist accepts the booking" });
+    }
+    const pdf = await renderContractPdf({
+      bookingId: booking.id,
+      text: contract.text,
+      generatedAt: contract.generated_at,
+    });
+    sendPdf(res, pdf, `LineUp-contract-${booking.id.slice(0, 8)}.pdf`);
+  } catch (e) {
+    console.error("contract pdf", e);
+    res.status(500).json({ message: "Failed to create contract PDF" });
+  }
+});
+
+// GET /api/documents/receipts/:receiptId/pdf
+router.get("/receipts/:receiptId/pdf", requireAuth, async (req, res) => {
+  try {
+    const receipt = await db.prepare("SELECT * FROM receipts WHERE id = ?").get(req.params.receiptId);
+    if (!receipt) return res.status(404).json({ message: "Receipt not found" });
+    const booking = await db.prepare("SELECT * FROM bookings WHERE id = ?").get(receipt.booking_id);
+    if (!booking || !canAccess(req.user, booking)) {
+      return res.status(403).json({ message: "Not your booking" });
+    }
+    const deposit = receipt.kind === "full"
+      ? await db.prepare("SELECT id FROM receipts WHERE booking_id = ? AND kind = 'deposit'").get(receipt.booking_id)
+      : null;
+    const pdf = await renderReceiptPdf({ receipt, booking, isBalance: Boolean(deposit) });
+    sendPdf(res, pdf, `LineUp-receipt-${receipt.id.slice(0, 8)}.pdf`);
+  } catch (e) {
+    console.error("receipt pdf", e);
+    res.status(500).json({ message: "Failed to create receipt PDF" });
   }
 });
 
